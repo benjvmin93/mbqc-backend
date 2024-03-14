@@ -52,6 +52,7 @@ def meas_op(s_signal, t_signal, angle, plane, vop, measurement):
         )
     angle = angle * measure_update.coeff + measure_update.add_term
     angle *= np.pi
+    
     # Build projector operator
     vec = measure_update.new_plane.polar(angle)
     op_mat = np.eye(2, dtype=np.complex128) / 2
@@ -138,18 +139,9 @@ class StateVec:
         projected_plus = np.moveaxis(projected_plus, 0, index_in_vect_state).flatten()
         projected_minus = np.tensordot(proj_minus, self.psi, (1, index_in_vect_state))
         projected_minus = np.moveaxis(projected_minus, 0, index_in_vect_state).flatten()
-
-        """
-        # Get projected state transconjugates
-        projected_plus_transconj = np.tensordot(self.psi.conj().T, proj_plus.conj().T, (index_in_vect_state, 1))
-        projected_plus_transconj = np.moveaxis(projected_plus_transconj, index_in_vect_state, 0)
-        projected_minus_transconj = np.tensordot(self.psi.conj().T, proj_minus.conj().T, (index_in_vect_state, 1))
-        projected_minus_transconj = np.moveaxis(projected_minus_transconj, index_in_vect_state, 0)
-        """
         logger.debug(f'[M]({index}): projected_plus={projected_plus.flatten()}, projected_minus={projected_minus.flatten()}')
+        
         # Computes probabilities of getting each state
-        shape = (1, 2 ** self.nb_qubits)
-        shape_transconj = (2 ** self.nb_qubits, 1)
         proba_Plus = np.linalg.norm(projected_plus) ** 2
         proba_Minus = np.linalg.norm(projected_minus) ** 2
 
