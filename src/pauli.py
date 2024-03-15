@@ -8,6 +8,7 @@ import numpy as np
 import pydantic
 from . import clifford
 
+
 class IXYZ(enum.Enum):
     I = -1
     X = 0
@@ -89,7 +90,9 @@ class ComplexUnit:
         return COMPLEX_UNITS[not self.__sign][self.__im]
 
 
-COMPLEX_UNITS = [[ComplexUnit(sign, im) for im in (False, True)] for sign in (False, True)]
+COMPLEX_UNITS = [
+    [ComplexUnit(sign, im) for im in (False, True)] for sign in (False, True)
+]
 
 
 UNIT = COMPLEX_UNITS[False][False]
@@ -158,10 +161,10 @@ class Plane(enum.Enum):
             return Axis.X  # former convention was Z
 
     def polar(self, angle: float) -> typing.Tuple[float, float, float]:
-        result = [0, 0, 0]
+        result = [0.] * 3
         result[self.cos.value] = np.cos(angle)
         result[self.sin.value] = np.sin(angle)
-        return tuple(result)
+        return (result[0], result[1], result[2])
 
     @staticmethod
     def from_axes(a: Axis, b: Axis) -> "Plane":
@@ -252,12 +255,17 @@ class Pauli:
 
 
 TABLE = [
-    [[Pauli(symbol, COMPLEX_UNITS[sign][im]) for im in (False, True)] for sign in (False, True)]
+    [
+        [Pauli(symbol, COMPLEX_UNITS[sign][im]) for im in (False, True)]
+        for sign in (False, True)
+    ]
     for symbol in (IXYZ.I, IXYZ.X, IXYZ.Y, IXYZ.Z)
 ]
 
 
-LIST = [pauli for sign_im_list in TABLE for im_list in sign_im_list for pauli in im_list]
+LIST = [
+    pauli for sign_im_list in TABLE for im_list in sign_im_list for pauli in im_list
+]
 
 
 def get(symbol: IXYZ, unit: ComplexUnit) -> Pauli:
@@ -284,22 +292,24 @@ class MeasureUpdate(pydantic.BaseModel):
     add_term: float
 
     @staticmethod
-    def compute(plane: Plane, s: bool, t: bool, clifford: "clifford.Clifford") -> "MeasureUpdate":
+    def compute(
+        plane: Plane, s: bool, t: bool, c: "clifford.Clifford"
+    ) -> "MeasureUpdate":
         gates = list(map(Pauli.from_axis, plane.axes))
         if s:
-            clifford = clifford.X @ clifford
+            c = clifford.X @ clifford
         if t:
-            clifford = clifford.Z @ clifford
-        gates = list(map(clifford.measure, gates))
+            c = clifford.Z @ clifford
+        gates = list(map(c.measure, gates))
         new_plane = Plane.from_axes(*(gate.axis for gate in gates))
-        cos_pauli = clifford.measure(Pauli.from_axis(plane.cos))
-        sin_pauli = clifford.measure(Pauli.from_axis(plane.sin))
+        cos_pauli = c.measure(Pauli.from_axis(plane.cos))
+        sin_pauli = c.measure(Pauli.from_axis(plane.sin))
         exchange = cos_pauli.axis != new_plane.cos
         if exchange == (cos_pauli.unit.sign == sin_pauli.unit.sign):
             coeff = -1
         else:
             coeff = 1
-        add_term = 0
+        add_term = 0.
         if cos_pauli.unit.sign:
             add_term += np.pi
         if exchange:
