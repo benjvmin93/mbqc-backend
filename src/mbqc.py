@@ -3,8 +3,6 @@ from .pattern import Pattern
 from .command import N, M, E, X, Z
 from .logger import logger
 
-import numpy as np  # For print debug
-
 
 class MBQC:
     def __init__(self, pattern: list[list], Nnode: int, output_nodes: list[int]):

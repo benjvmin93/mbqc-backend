@@ -130,6 +130,7 @@ class StateVec:
             (i, j) qubit indices
         """
         logger.info(f"Swap qubits {qubits[0]} with {qubits[1]}")
+        
         # contraction: 2nd index - control index, and 3rd index - target index.
         self.psi = np.tensordot(SWAP_TENSOR, self.psi, ((2, 3), qubits))
         # sort back axes
@@ -164,21 +165,16 @@ class StateVec:
         # Get projected states
         index_in_vect_state = self.node_index.index(index)
         projected_plus = np.tensordot(proj_plus, self.psi, (1, index_in_vect_state))
-        projected_plus = np.moveaxis(projected_plus, 0, index_in_vect_state).flatten()
-        projected_minus = np.tensordot(proj_minus, self.psi, (1, index_in_vect_state))
-        projected_minus = np.moveaxis(projected_minus, 0, index_in_vect_state).flatten()
-        logger.debug(
-            f"[M]({index}): projected_plus={projected_plus.flatten()}, projected_minus={projected_minus.flatten()}"
-        )
+        projected_plus = np.moveaxis(projected_plus, 0, index_in_vect_state)
 
         # Computes probabilities of getting each state
         proba_Plus = np.linalg.norm(projected_plus) ** 2
-        proba_Minus = np.linalg.norm(projected_minus) ** 2
+        proba_Minus = 1 - proba_Plus
 
         logger.debug(f"[M]({index}): p(+)={proba_Plus}, p(-)={proba_Minus}")
         # Simulate measurement according to probabilities and get right measurement operator
         measurement = np.random.choice(
-            a=[0, 1], p=[np.abs(proba_Plus), np.abs(proba_Minus)]
+            a=[0, 1], p=[proba_Plus, proba_Minus]
         )
         measurements[index] = measurement
         mop = proj_plus if measurement == 0 else proj_minus
