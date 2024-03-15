@@ -4,6 +4,7 @@ from typing import Union, Literal
 Node = int
 Plane = Union[Literal["XY"], Literal["YZ"], Literal["XZ"]]
 
+
 class Command(BaseModel):
     pass
 

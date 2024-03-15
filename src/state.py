@@ -1,6 +1,7 @@
 from enum import Enum
 import numpy as np
 
+
 class State(Enum):
     ZERO = 0
     ONE = 1
@@ -9,7 +10,8 @@ class State(Enum):
     iMINUS = 4
     iPLUS = 5
 
-def _build_state(state: State, Nqubits: int=1) -> np.ndarray:
+
+def _build_state(state: State, Nqubits: int = 1) -> np.ndarray:
     """
     Build the state according to the number of qubits.
     """
@@ -24,7 +26,7 @@ def _build_state(state: State, Nqubits: int=1) -> np.ndarray:
         case State.PLUS:
             S[shape_0] = S[shape_1] = 1 / np.sqrt(2)
         case State.MINUS:
-            S[shape_0] =  1
+            S[shape_0] = 1
             S[shape_1] = -1
             S /= np.sqrt(2)
         case State.iMINUS:
@@ -36,6 +38,7 @@ def _build_state(state: State, Nqubits: int=1) -> np.ndarray:
             S[shape_1] = 1j
             S /= np.sqrt(2)
     return S
+
 
 zero = _build_state(State.ZERO)
 one = _build_state(State.ONE)

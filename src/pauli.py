@@ -161,7 +161,7 @@ class Plane(enum.Enum):
             return Axis.X  # former convention was Z
 
     def polar(self, angle: float) -> typing.Tuple[float, float, float]:
-        result = [0.] * 3
+        result = [0.0] * 3
         result[self.cos.value] = np.cos(angle)
         result[self.sin.value] = np.sin(angle)
         return (result[0], result[1], result[2])
@@ -309,7 +309,7 @@ class MeasureUpdate(pydantic.BaseModel):
             coeff = -1
         else:
             coeff = 1
-        add_term = 0.
+        add_term = 0.0
         if cos_pauli.unit.sign:
             add_term += np.pi
         if exchange:

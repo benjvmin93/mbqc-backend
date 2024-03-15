@@ -10,7 +10,7 @@ class MBQC:
     def __init__(self, pattern: list[list], Nnode: int, output_nodes: list[int]):
         self.pattern = Pattern(pattern, Nnode, output_nodes)
         self.measurements = [None] * Nnode
-        self.state_vec = StateVec(self.pattern.Nnode, self.pattern.output_nodes)
+        self.state_vec = StateVec(nQubits=1, output_nodes=self.pattern.output_nodes)
         logger.info(f"Initialized simulator with {Nnode} qubits")
         logger.debug(f"Initial statevec = {self.state_vec}")
 

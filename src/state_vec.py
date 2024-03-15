@@ -3,7 +3,7 @@ from .clifford import H, X, Z, get
 from . import pauli
 from .command import Plane
 from .logger import logger
-from .state import _build_state, State
+from .state import _build_state, State, zero
 
 CZ_TENSOR = np.array(
     [[[[1, 0], [0, 0]], [[0, 1], [0, 0]]], [[[0, 0], [1, 0]], [[0, 0], [0, -1]]]],
@@ -16,7 +16,9 @@ SWAP_TENSOR = np.array(
 )
 
 
-def meas_op(s_signal: int, t_signal: int, angle: float, plane: Plane, vop: int, measurement: int) -> np.ndarray:
+def meas_op(
+    s_signal: int, t_signal: int, angle: float, plane: Plane, vop: int, measurement: int
+) -> np.ndarray:
     """Returns the projection operator.
 
     Parameters
@@ -57,11 +59,11 @@ def meas_op(s_signal: int, t_signal: int, angle: float, plane: Plane, vop: int, 
 
 
 class StateVec:
-    def __init__(self, nb_qubits: int, output_nodes: list[int]):
+    def __init__(self, nQubits: int = 1, output_nodes: list[int] = []):
         """
         Initalize a new state vector according to the given pattern.Pattern object
         """
-        self.nb_qubits = nb_qubits
+        self.nb_qubits = nQubits
         self.output_nodes = output_nodes
         self.psi = _build_state(State.ZERO, self.nb_qubits)
         self.node_index = list(range(self.nb_qubits))
@@ -76,6 +78,18 @@ class StateVec:
     def norm(self) -> float:
         return _norm(self.psi)
 
+    def tensor(self, other: np.ndarray):
+        new_shape = int(self.nb_qubits + np.log2(len(other.flatten())))
+        self.psi = np.kron(self.psi.flatten(), other.flatten()).reshape(
+            (2,) * new_shape
+        )
+
+    def add_qubit(self):
+        new_sv = zero
+        self.tensor(new_sv)
+        self.nb_qubits += 1
+        self.node_index.append(max(self.node_index) + 1)
+
     def get_state_vector(self) -> np.ndarray:
         return self.psi
 
@@ -83,13 +97,15 @@ class StateVec:
         """
         Prepare |+> state at the right target qubit within the vector state.
         """
-        logger.debug(f"[N]({self.node_index.index(target)}): statevec={self.psi.flatten()}, H=\n{H.matrix}")
-        self.single_qubit_evolution(
-            H.matrix, self.node_index.index(target)
+        if target not in self.node_index:
+            self.add_qubit()
+        logger.debug(
+            f"[N]({self.node_index.index(target)}): statevec={self.psi.flatten()}, H=\n{H.matrix}"
         )
+        self.single_qubit_evolution(H.matrix, self.node_index.index(target))
         logger.info(f"Preparing qubit {target}.")
 
-    def entangle(self, control:int, target: int) -> None:
+    def entangle(self, control: int, target: int) -> None:
         """
         Entangles the two qubits.
         """
@@ -130,7 +146,7 @@ class StateVec:
         s_domain: list[int],
         t_domain: list[int],
         measurements: list[int],
-        vop: int=0,
+        vop: int = 0,
     ) -> list[int]:
         """
         Measure the qubit at index.
@@ -182,15 +198,15 @@ class StateVec:
 
         return measurements
 
-    def apply_correction(self, type: str, index: int, domain: list[int], measurement_results: list[int]) -> None:
+    def apply_correction(
+        self, type: str, index: int, domain: list[int], measurement_results: list[int]
+    ) -> None:
         for i in domain:
             assert measurement_results[i] != None
         index = self.node_index.index(index)
-        cliff_gate = X if type == 'X' else Z
+        cliff_gate = X if type == "X" else Z
         if np.mod(sum([measurement_results[i] for i in domain]), 2) == 1:
-            self.single_qubit_evolution(
-                cliff_gate.matrix, index
-            )
+            self.single_qubit_evolution(cliff_gate.matrix, index)
             logger.info(f"[{type}]({index}): new_psi={self.psi.flatten()}")
 
     def single_qubit_evolution(self, op: np.ndarray, index: int):
