@@ -84,11 +84,11 @@ class StateVec:
             (2,) * new_shape
         )
 
-    def add_qubit(self):
+    def add_qubit(self, target: int):
         new_sv = zero
         self.tensor(new_sv)
         self.nb_qubits += 1
-        self.node_index.append(max(self.node_index) + 1)
+        self.node_index.append(target)
 
     def get_state_vector(self) -> np.ndarray:
         return self.psi
@@ -98,7 +98,7 @@ class StateVec:
         Prepare |+> state at the right target qubit within the vector state.
         """
         if target not in self.node_index:
-            self.add_qubit()
+            self.add_qubit(target)
         logger.debug(
             f"[N]({self.node_index.index(target)}): statevec={self.psi.flatten()}, H=\n{H.matrix}"
         )
