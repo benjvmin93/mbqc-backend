@@ -6,7 +6,7 @@ import unittest
 
 def get_pattern_from_circ(circ):
     pattern = circ.standardize_and_transpile()
-    return MBQC(pattern.seq, pattern.Nnode, pattern.output_nodes)
+    return MBQC(list(pattern), pattern.Nnode, pattern.input_nodes, pattern.output_nodes)
 
 
 class TestSimu(unittest.TestCase):

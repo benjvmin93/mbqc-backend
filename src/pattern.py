@@ -2,9 +2,10 @@ from .command import N, M, E, X, Z
 
 
 class Pattern:
-    def __init__(self, pattern: list, Nnode: int, output_nodes: list[int]):
+    def __init__(self, pattern: list, Nnode: int, input_nodes: list[int], output_nodes: list[int]):
         self.cmd_list = []
         self.Nnode = Nnode
+        self.input_nodes = input_nodes
         self.output_nodes = output_nodes
         for cmd in pattern:
             t = cmd[0]
