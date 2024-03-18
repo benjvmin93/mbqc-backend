@@ -1,0 +1,4 @@
+.mypy*
+.pytest*
+*pycache*
+statevec.log
