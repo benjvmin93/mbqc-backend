@@ -43,8 +43,9 @@ def meas_op(
 
     """
     # Update angle
+    cliff_op = get(vop)
     measure_update = pauli.MeasureUpdate.compute(
-        pauli.Plane[plane], s_signal % 2 == 1, t_signal % 2 == 1, get(vop)
+        pauli.Plane[plane], s_signal % 2 == 1, t_signal % 2 == 1, cliff_op
     )
     angle = angle * measure_update.coeff + measure_update.add_term
     angle *= np.pi
@@ -53,7 +54,8 @@ def meas_op(
     vec = measure_update.new_plane.polar(angle)
     op_mat = np.eye(2, dtype=np.complex128) / 2
     for i in range(3):
-        op_mat += (-1) ** (measurement) * vec[i] * get(i + 1).matrix / 2
+        cliff_op = get(i + 1)
+        op_mat += (-1) ** (measurement) * vec[i] * cliff_op.matrix / 2
     logger.debug(f"[meas_op]: angle={angle}, mOP=\n{op_mat}")
     return op_mat
 
@@ -76,15 +78,24 @@ class StateVec:
 
     @property
     def norm(self) -> float:
+        """
+        Returns the norm of the state vector.
+        """
         return _norm(self.psi)
 
     def tensor(self, other: np.ndarray):
+        """
+        Performs self ⊗ other.
+        """
         new_shape = int(self.nb_qubits + np.log2(len(other.flatten())))
         self.psi = np.kron(self.psi.flatten(), other.flatten()).reshape(
             (2,) * new_shape
         )
 
     def add_qubit(self, target: int):
+        """
+        Add a qubit to the state vector.
+        """
         new_sv = zero
         self.tensor(new_sv)
         self.nb_qubits += 1
@@ -97,17 +108,19 @@ class StateVec:
         """
         Prepare |+> state at the right target qubit within the vector state.
         """
+        # If the target qubit does not exist, add it to the state vector
         if target not in self.node_index:
             self.add_qubit(target)
         logger.debug(
             f"[N]({self.node_index.index(target)}): statevec={self.psi.flatten()}, H=\n{H.matrix}"
         )
+        # Prepares qubit in |+>
         self.single_qubit_evolution(H.matrix, self.node_index.index(target))
         logger.info(f"Preparing qubit {target}.")
 
     def entangle(self, control: int, target: int) -> None:
         """
-        Entangles the two qubits.
+        Entangles the two qubits by applying CZ on target according to control.
         """
         assert control != target
         # contraction: 2nd index - control index, and 3rd index - target index.
@@ -172,16 +185,18 @@ class StateVec:
         proba_Minus = 1 - proba_Plus
 
         logger.debug(f"[M]({index}): p(+)={proba_Plus}, p(-)={proba_Minus}")
-        # Simulate measurement according to probabilities and get right measurement operator
+
+        # Simulate measurement according to probabilities
         measurement = np.random.choice(a=[0, 1], p=[proba_Plus, proba_Minus])
         measurements[index] = measurement
-        mop = proj_plus if measurement == 0 else proj_minus
 
-        logger.debug(f"[M]({index}): res={measurement},\nmOP=\n{mop}")
+        if measurement == 0:  # We already computed the state projected over |+>
+            self.psi = projected_plus
+        else:  # Project onto |->
+            self.single_qubit_evolution(proj_minus, index_in_vect_state)
 
-        # Project the state
-        self.single_qubit_evolution(mop, index_in_vect_state)
-        # self.psi[np.abs(self.psi) < 1e-15] = 0
+        logger.debug(f"[M]({index}): res={measurement}")
+
         logger.debug(
             f"[M]({index_in_vect_state}): projected_state={self.psi.flatten()}, shape={self.psi.flatten().shape}"
         )
@@ -195,6 +210,9 @@ class StateVec:
     def apply_correction(
         self, type: str, index: int, domain: list[int], measurement_results: list[int]
     ) -> None:
+        """
+        Applies correction 'X' or 'X' to the qubit at 'index' according to the signal domain measurements.
+        """
         for i in domain:
             assert measurement_results[i] != None
         index = self.node_index.index(index)
@@ -226,11 +244,14 @@ class StateVec:
 
     def normalize(self) -> None:
         """
-        Normalize vector state (ie. divides it by its norm) and rounds float approximation lower than threshold.
+        Normalize vector state (ie. divides it by its norm).
         """
         self.psi = self.psi / _norm(self.psi)
 
     def remove_qubit(self, index: int) -> None:
+        """
+        Remove qubit at 'index' from the state vector.
+        """
         assert not np.isclose(_norm(self.psi), 0)
         psi = self.psi.take(indices=0, axis=index)
         self.psi = (
