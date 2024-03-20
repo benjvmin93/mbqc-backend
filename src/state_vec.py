@@ -1,9 +1,9 @@
 import numpy as np
-from .clifford import H, X, Z, get
+from .clifford import X, Z, get
 from . import pauli
 from .command import Plane
 from .logger import logger
-from .state import _tensor, plus
+from .state import plus
 
 CZ_TENSOR = np.array(
     [[[[1, 0], [0, 0]], [[0, 1], [0, 0]]], [[[0, 0], [1, 0]], [[0, 0], [0, -1]]]],

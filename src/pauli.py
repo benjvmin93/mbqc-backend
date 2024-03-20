@@ -297,9 +297,9 @@ class MeasureUpdate(pydantic.BaseModel):
     ) -> "MeasureUpdate":
         gates = list(map(Pauli.from_axis, plane.axes))
         if s:
-            c = clifford.X @ clifford
+            c = clifford.X @ c
         if t:
-            c = clifford.Z @ clifford
+            c = clifford.Z @ c
         gates = list(map(c.measure, gates))
         new_plane = Plane.from_axes(*(gate.axis for gate in gates))
         cos_pauli = c.measure(Pauli.from_axis(plane.cos))

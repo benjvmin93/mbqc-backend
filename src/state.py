@@ -38,10 +38,6 @@ def _get_state(state: State) -> np.ndarray:
     return S
 
 
-def _tensor(left: State, right: State):
-    return np.kron(left, right)
-
-
 zero = _get_state(State.ZERO)
 one = _get_state(State.ONE)
 plus = _get_state(State.PLUS)
