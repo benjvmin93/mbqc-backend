@@ -3,7 +3,7 @@ from .clifford import H, X, Z, get
 from . import pauli
 from .command import Plane
 from .logger import logger
-from .state import _build_state, State, zero
+from .state import _tensor, plus
 
 CZ_TENSOR = np.array(
     [[[[1, 0], [0, 0]], [[0, 1], [0, 0]]], [[[0, 0], [1, 0]], [[0, 0], [0, -1]]]],
@@ -61,14 +61,14 @@ def meas_op(
 
 
 class StateVec:
-    def __init__(self, nQubits: int = 1, output_nodes: list[int] = []):
+    def __init__(self, nQubits: int = 1):
         """
-        Initalize a new state vector according to the given pattern.Pattern object
+        Initalize a new state vector in the |+> state.
         """
-        self.nb_qubits = nQubits
-        self.output_nodes = output_nodes
-        self.psi = _build_state(State.ZERO, self.nb_qubits)
-        self.node_index = list(range(self.nb_qubits))
+        self.psi = np.ones((2,) * nQubits) / 2 ** (
+            nQubits / 2
+        )  # Initialize statevector in |+> ⊗^n
+        self.node_index = list(range(nQubits))
 
     def __repr__(self) -> str:
         return str(f"{self.psi.flatten()}")
@@ -87,36 +87,26 @@ class StateVec:
         """
         Performs self ⊗ other.
         """
-        new_shape = int(self.nb_qubits + np.log2(len(other.flatten())))
+        new_shape = len(self.psi.shape) + len(other.shape)
         self.psi = np.kron(self.psi.flatten(), other.flatten()).reshape(
             (2,) * new_shape
         )
-
-    def add_qubit(self, target: int):
-        """
-        Add a qubit to the state vector.
-        """
-        new_sv = zero
-        self.tensor(new_sv)
-        self.nb_qubits += 1
-        self.node_index.append(target)
 
     def get_state_vector(self) -> np.ndarray:
         return self.psi
 
     def prepare_state(self, target: int) -> None:
         """
-        Prepare |+> state at the right target qubit within the vector state.
+        Append new qubit to the end of self.psi and update self.node_index
+        We assume that 'target' doesn't exist in the state vector because we
+        shouldn't prepare inputs qubits nor qubits that have already been prepared
         """
-        # If the target qubit does not exist, add it to the state vector
-        if target not in self.node_index:
-            self.add_qubit(target)
+        new_qubit = plus
+        self.tensor(new_qubit)
+        self.node_index.append(target)
         logger.debug(
-            f"[N]({self.node_index.index(target)}): statevec={self.psi.flatten()}, H=\n{H.matrix}"
+            f"[N]({self.node_index.index(target)}): statevec={self.psi.flatten()}, shape={self.psi.shape}"
         )
-        # Prepares qubit in |+>
-        self.single_qubit_evolution(H.matrix, self.node_index.index(target))
-        logger.info(f"Preparing qubit {target}.")
 
     def entangle(self, control: int, target: int) -> None:
         """
@@ -130,9 +120,7 @@ class StateVec:
         # sort back axes
         self.psi = np.moveaxis(self.psi, (0, 1), (control, target))
         logger.info(f"Entangling qubit {control} with qubit {target}")
-        logger.debug(
-            f"[E]({control},{target}): statevec={self.psi.flatten()}, shape={self.psi.shape}"
-        )
+        logger.debug(f"[E]({control},{target}): statevec={self.psi.flatten()}")
 
     def swap(self, qubits: tuple[int, int]) -> None:
         """swap qubits
@@ -159,9 +147,8 @@ class StateVec:
         angle: int,
         s_domain: list[int],
         t_domain: list[int],
-        measurements: list[int],
         vop: int = 0,
-    ) -> list[int]:
+    ) -> int:
         """
         Measure the qubit at index.
         Returns:
@@ -170,15 +157,17 @@ class StateVec:
         logger.info(f"Measuring qubit {index} in plane {plane} and angle {angle}.")
 
         ### Build measurement operator
-        s_signal = sum(s_domain)
-        t_signal = sum(t_domain)
+        s_signal = s_domain if isinstance(s_domain, int) else sum(s_domain)
+        t_signal = t_domain if isinstance(t_domain, int) else sum(t_domain)
         proj_plus = meas_op(s_signal, t_signal, angle, plane, vop, 0)
         proj_minus = meas_op(s_signal, t_signal, angle, plane, vop, 1)
 
+        # Get right index within self.node_index
+        index_sv = self.node_index.index(index)
+
         # Get projected states
-        index_in_vect_state = self.node_index.index(index)
-        projected_plus = np.tensordot(proj_plus, self.psi, (1, index_in_vect_state))
-        projected_plus = np.moveaxis(projected_plus, 0, index_in_vect_state)
+        projected_plus = np.tensordot(proj_plus, self.psi, (1, index_sv))
+        projected_plus = np.moveaxis(projected_plus, 0, index_sv)
 
         # Computes probabilities of getting each state
         proba_Plus = np.linalg.norm(projected_plus) ** 2
@@ -188,37 +177,42 @@ class StateVec:
 
         # Simulate measurement according to probabilities
         measurement = np.random.choice(a=[0, 1], p=[proba_Plus, proba_Minus])
-        measurements[index] = measurement
 
         if measurement == 0:  # We already computed the state projected over |+>
             self.psi = projected_plus
         else:  # Project onto |->
-            self.single_qubit_evolution(proj_minus, index_in_vect_state)
+            self.single_qubit_evolution(proj_minus, index_sv)
 
         logger.debug(f"[M]({index}): res={measurement}")
 
         logger.debug(
-            f"[M]({index_in_vect_state}): projected_state={self.psi.flatten()}, shape={self.psi.flatten().shape}"
+            f"[M]({index}): projected_state={self.psi.flatten()}, shape={self.psi.flatten().shape}"
         )
 
-        # Remove measured qubit
-        self.remove_qubit(index_in_vect_state)
+        # Remove measured qubit from state vector
+        self.remove_qubit(index_sv)
+        # Remove qubit index from node list
         self.node_index.remove(index)
 
-        return measurements
+        return measurement
 
     def apply_correction(
         self, type: str, index: int, domain: list[int], measurement_results: list[int]
     ) -> None:
         """
-        Applies correction 'X' or 'X' to the qubit at 'index' according to the signal domain measurements.
+        Applies correction 'X' or 'Z' to the qubit at 'index' according to the signal domain measurements.
         """
+        # Ensure qubit indices in domain have already been measured.
+        # This should be done in mbqc class.
         for i in domain:
             assert measurement_results[i] != None
-        index = self.node_index.index(index)
+
+        # Get right index within self.node_index
+        sv_index = self.node_index.index(index)
+
         cliff_gate = X if type == "X" else Z
         if np.mod(sum([measurement_results[i] for i in domain]), 2) == 1:
-            self.single_qubit_evolution(cliff_gate.matrix, index)
+            self.single_qubit_evolution(cliff_gate.matrix, sv_index)
             logger.info(f"[{type}]({index}): new_psi={self.psi.flatten()}")
 
     def single_qubit_evolution(self, op: np.ndarray, index: int):
@@ -260,26 +254,9 @@ class StateVec:
             else self.psi.take(indices=1, axis=index)
         )
         self.normalize()
-        self.nb_qubits -= 1
         logger.debug(
             f"[remove_qubit]: new_psi={self.psi.flatten()}, shape={self.psi.flatten().shape}, norm={_norm(self.psi)}"
         )
-
-    def sort_qubits(self) -> None:
-        """sort the qubit order in internal statevector"""
-        for i, ind in enumerate(self.output_nodes):
-            if not self.node_index[i] == ind:
-                move_from = self.node_index.index(ind)
-                self.swap((i, move_from))
-                self.node_index[i], self.node_index[move_from] = (
-                    self.node_index[move_from],
-                    self.node_index[i],
-                )
-
-    def finalize(self) -> None:
-        """to be run at the end of pattern simulation."""
-        self.sort_qubits()
-        self.normalize()
 
 
 def _norm(psi: np.ndarray) -> float:

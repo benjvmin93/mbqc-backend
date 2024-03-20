@@ -36,10 +36,10 @@ class TestStatevec(unittest.TestCase):
         Removes one qubit and checks if the state vector is correct.
         """
         nQubits = 2
-        sv = StateVec(nQubits, output_nodes=[1])
+        sv = StateVec(nQubits)
 
-        for i in range(sv.nb_qubits):
-            sv.entangle(i, (i + 1) % sv.nb_qubits)
+        for i in range(nQubits):
+            sv.entangle(i, (i + 1) % nQubits)
         m_op = meas_op(
             s_signal=0, t_signal=0, angle=0, plane="XY", vop=0, measurement=0
         )
@@ -60,13 +60,12 @@ class TestStatevec(unittest.TestCase):
         """
         n = 3
         k = 0
-        # for measurement into |-> returns [[0, 0], ..., [0, 0]] (whose norm is zero)
         for plane in ["XY", "YZ", "XZ"]:
             m_op = meas_op(0, 0, 0, plane, 0, 0)
-            sv = StateVec(n, [0])
+            sv = StateVec(n)
             sv.single_qubit_evolution(m_op, [k])
             sv.remove_qubit(k)
-            sv2 = StateVec(n - 1, [0])
+            sv2 = StateVec(n - 1)
             np.testing.assert_almost_equal(
                 np.abs(sv.psi.flatten() @ sv2.psi.flatten().conj()), 1
             )
@@ -77,26 +76,26 @@ class TestStatevec(unittest.TestCase):
         """
         n = 3
         k = 0
-        for state in [plus, zero, minus, iplus, iminus]:
+        for state in [plus, zero, one, iplus, iminus]:
             m_op = np.outer(state, state.T.conjugate())
-            sv = StateVec(n, [0])
+            sv = StateVec(n)
             sv.single_qubit_evolution(m_op, [k])
             sv.remove_qubit(k)
-            sv2 = StateVec(n - 1, [0])
+            sv2 = StateVec(n - 1)
             np.testing.assert_almost_equal(
                 np.abs(sv.psi.flatten().dot(sv2.psi.flatten().conj())), 1
             )
 
     def test_measurement_one(self):
         """
-        Measure statevec into |1><1|
+        Measure statevec into |-><-|
         """
         n = 3
         k = 0
-        # for measurement into |1> returns [[0, 0], ..., [0, 0]] (whose norm is zero)
-        state = one
+        # for measurement into |-> returns [[0, 0], ..., [0, 0]] (whose norm is zero)
+        state = minus
         m_op = np.outer(state, state.T.conjugate())
-        sv = StateVec(n, [0])
+        sv = StateVec(n)
         sv.single_qubit_evolution(m_op, [k])
         with self.assertRaises(AssertionError):
             sv.remove_qubit(k)
