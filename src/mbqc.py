@@ -39,8 +39,7 @@ class MBQC:
                 )
 
     def run_pattern(self):
-        cmd_list = self.pattern.cmd_list
-        for cmd in cmd_list:
+        for cmd in self.pattern.cmd_list:
             match cmd:
                 case N(node=i):
                     self.state_vec.prepare_state(i)
