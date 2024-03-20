@@ -77,12 +77,14 @@ def bench_sv_simu(circuit: Circuit):
     Compare statevec with graphix simulator according to the given circuit.
     """
     p = get_pattern(circuit)
-    simu = MBQC(list(p), p.Nnode, p.input_nodes, p.output_nodes)
-    bench_simu = BenchmarkSimu().bench_class_functions(
-        obj1=simu,
-        obj2=p,
-        functions=(MBQC.run_pattern, Pattern.simulate_pattern),
-        labels=("simu", "graphix-simu"),
+    def run_our_simulator():
+        simu = MBQC(list(p), p.Nnode, p.input_nodes, p.output_nodes)
+        simu.run_pattern()
+    def run_graphix_simulator():
+        p.simulate_pattern(pr_calc=True)
+    bench_simu = BenchmarkSimu().bench_functions(
+        functions=(run_our_simulator, run_graphix_simulator),
+        label1="simu", label2="graphix-simu",
     )
     return bench_simu
 
@@ -188,27 +190,27 @@ def bench_apply_correction(
     return bench_simu
 
 
-nQubits = 2
-circ = Circuit(nQubits)
-circ.h(0)
-circ.cnot(0, 1)
-node = 0
-angle = 0
-vop = 0
-
-b_tensor = bench_sv_tensor(circ, 1)
-print(f"bench tensor: {b_tensor}")
-b_measure = bench_sv_measure(circ, node, angle, vop=vop)
-print(f"bench measure: {b_measure}")
-b_meas_op = bench_meas_op(angle, vop, "XY", 0, 0, 0)
-print(f"bench meas_op: {b_meas_op}")
-
-type = "X"
-domain = [1]
-node = 0
-measurements = [None, 1, None, None]
-b_apply_correction = bench_apply_correction(circ, type, node, domain, measurements)
-print(f"bench apply_correction: {b_apply_correction}")
+# nQubits = 2
+# circ = Circuit(nQubits)
+# circ.h(0)
+# circ.cnot(0, 1)
+# node = 0
+# angle = 0
+# vop = 0
+# 
+# b_tensor = bench_sv_tensor(circ, 1)
+# print(f"bench tensor: {b_tensor}")
+# b_measure = bench_sv_measure(circ, node, angle, vop=vop)
+# print(f"bench measure: {b_measure}")
+# b_meas_op = bench_meas_op(angle, vop, "XY", 0, 0, 0)
+# print(f"bench meas_op: {b_meas_op}")
+# 
+# type = "X"
+# domain = [1]
+# node = 0
+# measurements = [None, 1, None, None]
+# b_apply_correction = bench_apply_correction(circ, type, node, domain, measurements)
+# print(f"bench apply_correction: {b_apply_correction}")
 
 circ = build_random_circuit(1, 2)
 b_simu = bench_sv_simu(circ)
