@@ -8,13 +8,13 @@ class BenchmarkSimu:
         self,
         functions,
         it=1000,
-        label1: str = None,
-        label2: str = None,
+        label1: str = "",
+        label2: str = "",
         args1=[],
         args2=[],
     ):
         labels = (functions[0].__name__, functions[1].__name__)
-        if label1 is not None and label2 is not None:
+        if label1 != "" and label2 != "":
             labels = (label1, label2)
 
         t1 = timeit.timeit(
@@ -28,7 +28,14 @@ class BenchmarkSimu:
         return {labels[0]: t1, labels[1]: t2}
 
     def bench_class_functions(
-        self, obj1, obj2, functions, it=1000, args1=[], args2=[], labels=(None, None)
+        self,
+        obj1,
+        obj2,
+        functions,
+        it=1000,
+        args1=[],
+        args2=[],
+        labels: tuple[str, str] | tuple[None, None] = (None, None),
     ):
         if labels == (None, None):
             labels = (functions[0].__name__, functions[1].__name__)
