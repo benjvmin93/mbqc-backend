@@ -1,10 +1,9 @@
 from benchmark.benchmark_simu import BenchmarkSimu
-from src.state_vec import StateVec as statevec, meas_op
-from graphix.sim.statevec import StatevectorBackend as g_svbackend, meas_op as g_meas_op
-from graphix import Pattern
-from graphix import Circuit
+from graphix.graphix import Circuit
 import numpy as np
+from src.state_vec import StateVec
 from src.mbqc import MBQC
+from src.command import N, M, E, X, Z
 
 
 def get_pattern(circuit):
@@ -13,9 +12,7 @@ def get_pattern(circuit):
 
 def get_random_different_from(random_list: list[int], max: int):
     b = np.random.randint(max)
-
     while b in random_list:
-        print(f"get_random_different_from: {random_list}, {b}, {max}")
         b = np.random.randint(max)
     return b
 
@@ -36,17 +33,12 @@ def build_random_circuit(n: int = 1, depth: int = 1):
         circuit.rx,
         circuit.ry,
         circuit.rz,
-        circuit.i,
     ]
     two_qubit_gates = [circuit.cnot, circuit.swap, circuit.rzz]
     while depth != 0:
         gate_type = 0  # If there is one qubit, we can only use one_qubit gates
-        if n == 1:
-            pass
-        elif n == 2:  # Adapt if there is two qubits
+        if n > 1:
             gate_type = np.random.randint(2)
-        else:  # Otherwise we can use all type of gates
-            gate_type = np.random.randint(3)
 
         if gate_type == 0:  # One qubit gate
             gate = one_qubit_gates[np.random.randint(len(one_qubit_gates))]
@@ -63,131 +55,179 @@ def build_random_circuit(n: int = 1, depth: int = 1):
                 gate(control, target, np.random.rand() * np.pi)
             else:
                 gate(control, target)
-        else:  # Three qubits gate
-            control1 = np.random.randint(n)
-            control2 = get_random_different_from([control1], n)
-            target = get_random_different_from([control1, control2], n)
-            circuit.ccx(control1, control2, target)
         depth -= 1
     return circuit
 
 
-def bench_sv_simu(circuit: Circuit):
+def bench_sv_simu(circuit: Circuit, it=1000):
     """
     Compare statevec with graphix simulator according to the given circuit.
     """
     p = get_pattern(circuit)
+
     def run_our_simulator():
         simu = MBQC(list(p), p.Nnode, p.input_nodes, p.output_nodes)
         simu.run_pattern()
+
     def run_graphix_simulator():
         p.simulate_pattern(pr_calc=True)
+
     bench_simu = BenchmarkSimu().bench_functions(
         functions=(run_our_simulator, run_graphix_simulator),
-        label1="simu", label2="graphix-simu",
+        label1="simu",
+        label2="graphix-simu",
+        it=it,
     )
     return bench_simu
 
 
-def bench_sv_tensor(circuit: Circuit, index: int):
+from graphix.graphix import Circuit, Pattern
+from graphix.graphix.sim.statevec import StatevectorBackend
+import time
+
+
+def finalize(pattern, state_vec):
+    sort_qubits(pattern, state_vec)
+    state_vec.normalize()
+
+
+def sort_qubits(pattern, state_vec) -> None:
+    """sort the qubit order in internal statevector"""
+    for i, ind in enumerate(pattern.output_nodes):
+        if not state_vec.node_index[i] == ind:
+            move_from = state_vec.node_index.index(ind)
+            state_vec.swap((i, move_from))
+            state_vec.node_index[i], state_vec.node_index[move_from] = (
+                state_vec.node_index[move_from],
+                state_vec.node_index[i],
+            )
+
+
+def run_pattern(simu: MBQC, time_dict: dict):
     """
-    Compare statevec.prepare_state method with graphix add_nodes method, which
-    basically adds new qubit to the statevector in the |+> state.
+    Our simulator. Updates time_dict with the execution times for each pattern commands.
     """
-    p = get_pattern(circuit)
+    state_vec = simu.state_vec
+    cmd_list = simu.pattern.cmd_list
+    for cmd in cmd_list:
+        match cmd:
+            case N(node=i):
+                t1 = time.time()
+                state_vec.prepare_state(i)
+                t2 = time.time()
+                time_dict["N"]["simu"] += t2 - t1
+            case E(nodes=(i, j)):
+                t1 = time.time()
+                state_vec.entangle(i, j)
+                t2 = time.time()
+                time_dict["E"]["simu"] += t2 - t1
+            case M(node=i, plane=p, angle=alpha, s_domain=s_domain, t_domain=t_domain):
+                t1 = time.time()
+                simu.measurements[i] = state_vec.measure(
+                    i, p, alpha, s_domain, t_domain, simu.measurements
+                )
+                t2 = time.time()
+                time_dict["M"]["simu"] += t2 - t1
+            case X(node=i, domain=domain):
+                t1 = time.time()
+                state_vec.apply_correction("X", i, domain, simu.measurements)
+                t2 = time.time()
+                time_dict["X"]["simu"] += t2 - t1
+            case Z(node=i, domain=domain):
+                t1 = time.time()
+                state_vec.apply_correction("Z", i, domain, simu.measurements)
+                t2 = time.time()
+                time_dict["Z"]["simu"] += t2 - t1
+            case _:
+                e = f"Command type {cmd} doesn't exist."
+                raise KeyError(e)
+    finalize(simu.pattern, simu.state_vec)
 
-    sv = statevec(len(p.input_nodes))
-    to_tensor = np.zeros((2,) * nQubits)
-    to_tensor[(0,) * nQubits] = 1
 
-    g_sv = g_svbackend(p)
-
-    bench_tensor = BenchmarkSimu().bench_class_functions(
-        sv,
-        g_sv,
-        (statevec.prepare_state, g_svbackend.add_nodes),
-        args1=[index],
-        args2=[[index]],
-        labels=("sv_tensor", "g_sv_tensor"),
-    )
-    return bench_tensor
-
-
-def bench_sv_measure(
-    circuit: Circuit,
-    node: int,
-    angle: int,
-    plane: str = "XY",
-    s_domain: list[int] = [],
-    t_domain: list[int] = [],
-    vop=0,
-):
+def g_run_pattern(sv_simu: StatevectorBackend, time_dict: dict):
     """
-    Compare measure methods of simulator and graphix.
-    They are not doing the same so maybe this comparison isn't very relevant.
+    Graphix run pattern function override.
+    Updates time_dict with execution times according to each commands.
     """
-    p = get_pattern(circuit)
+    pattern = sv_simu.pattern
+    sv_simu.add_nodes(pattern.input_nodes)
+    for cmd in list(pattern):
+        if cmd[0] == "N":
+            t1 = time.time()
+            sv_simu.add_nodes([cmd[1]])
+            t2 = time.time()
+            time_dict["N"]["graphix"] += t2 - t1
+        elif cmd[0] == "E":
+            t1 = time.time()
+            sv_simu.entangle_nodes(cmd[1])
+            t2 = time.time()
+            time_dict["E"]["graphix"] += t2 - t1
+        elif cmd[0] == "M":
+            t1 = time.time()
+            sv_simu.measure(cmd)
+            t2 = time.time()
+            time_dict["M"]["graphix"] += t2 - t1
+        elif cmd[0] == "X":
+            t1 = time.time()
+            sv_simu.correct_byproduct(cmd)
+            t2 = time.time()
+            time_dict["X"]["graphix"] += t2 - t1
+        elif cmd[0] == "Z":
+            t1 = time.time()
+            sv_simu.correct_byproduct(cmd)
+            t2 = time.time()
+            time_dict["Z"]["graphix"] += t2 - t1
+        elif cmd[0] == "C":
+            sv_simu.apply_clifford(cmd)
+        else:
+            raise ValueError("invalid commands")
+    sv_simu.finalize()
 
-    sv = statevec(len(p.input_nodes))
-    sv.prepare_state(1)
-    sv.entangle(0, 1)
 
-    g_sv = g_svbackend(p)
-    g_sv.add_nodes(list(range(p.Nnode)))
-    g_sv.entangle_nodes((0, 1))
-
-    bench_measure = BenchmarkSimu().bench_class_functions(
-        sv,
-        g_sv,
-        (statevec.measure, g_svbackend.measure),
-        args1=[node, plane, angle, s_domain, t_domain, vop],
-        args2=[["M", node, plane, angle, s_domain, t_domain]],
-        labels=("sv_measure", "g_measure"),
-    )
-
-    return bench_measure
-
-
-def bench_meas_op(angle, vop, plane, s_signal, t_signal, choice):
+def bench_run_pattern(circuit, it=1000):
     """
-    Compare StateVec.meas_op and graphix meas_op.
+    Benchmark pattern command execution times.
+    Returns every average commands execution times according to our simulator and the graphix one.
+    Additionally, returns the total average execution times of the pattern for both simulators.
     """
-    bench_meas_op = BenchmarkSimu().bench_functions(
-        (meas_op, g_meas_op),
-        label1="meas_op",
-        label2="g_meas_op",
-        args1=[s_signal, t_signal, angle, plane, vop, choice],
-        args2=[angle, vop, plane, choice],
-    )
-    return bench_meas_op
+    time_dict = {
+        "N": {"simu": 0, "graphix": 0},
+        "E": {"simu": 0, "graphix": 0},
+        "M": {"simu": 0, "graphix": 0},
+        "X": {"simu": 0, "graphix": 0},
+        "Z": {"simu": 0, "graphix": 0},
+    }
 
+    # Get pattern
+    p = Circuit.standardize_and_transpile(circuit)
 
-def bench_apply_correction(
-    circuit, type: str, index: int, domain: list[int], measurement_results: list[int]
-):
-    """
-    Compare StateVec.apply_correction and graphix correct_byproduct method.
-    """
-    p = get_pattern(circuit)
+    # Run multiple iterations for our simulator
+    tot_simu = 0
+    tot_g_simu = 0
+    for _ in range(it):
+        simu = MBQC(list(p), p.Nnode, p.input_nodes, p.output_nodes)
+        g_simu = StatevectorBackend(p, pr_calc=True)  # Enable probability calculation
 
-    sv = statevec(len(p.input_nodes))
-    sv.prepare_state(1)
-    sv.entangle(0, 1)
+        t1 = time.time()
+        run_pattern(simu, time_dict)
+        t2 = time.time()
+        # Get total exec time
+        tot_simu += t2 - t1
+        t1 = time.time()
+        g_run_pattern(g_simu, time_dict)
+        t2 = time.time()
+        tot_g_simu += t2 - t1
 
-    g_sv = g_svbackend(p)
-    g_sv.add_nodes(p.input_nodes)
-    g_sv.entangle_nodes((0, 1))
-    g_sv.results = measurement_results
+    # Compute average time
+    tot_simu /= it
+    tot_g_simu /= it
 
-    bench_simu = BenchmarkSimu().bench_class_functions(
-        obj1=sv,
-        obj2=g_sv,
-        functions=(statevec.apply_correction, g_svbackend.correct_byproduct),
-        args1=[type, index, domain, measurement_results],
-        args2=[[type, index, domain, measurement_results]],
-        labels=("apply_correction", "graphix-correct_byproduct"),
-    )
-    return bench_simu
+    # Compute average time for each command
+    for key in time_dict.keys():
+        time_dict[key]["simu"] /= it
+        time_dict[key]["graphix"] /= it
+
+    return (time_dict, {"tot_simu": tot_simu, "tot_g_simu": tot_g_simu})
 
 
 # nQubits = 2
@@ -197,14 +237,14 @@ def bench_apply_correction(
 # node = 0
 # angle = 0
 # vop = 0
-# 
+#
 # b_tensor = bench_sv_tensor(circ, 1)
 # print(f"bench tensor: {b_tensor}")
 # b_measure = bench_sv_measure(circ, node, angle, vop=vop)
 # print(f"bench measure: {b_measure}")
 # b_meas_op = bench_meas_op(angle, vop, "XY", 0, 0, 0)
 # print(f"bench meas_op: {b_meas_op}")
-# 
+#
 # type = "X"
 # domain = [1]
 # node = 0
@@ -212,6 +252,20 @@ def bench_apply_correction(
 # b_apply_correction = bench_apply_correction(circ, type, node, domain, measurements)
 # print(f"bench apply_correction: {b_apply_correction}")
 
-circ = build_random_circuit(1, 2)
-b_simu = bench_sv_simu(circ)
-print(f"bench simu: {b_simu}")
+
+def bench_n_depth(depth=1):
+    perf_over_depth = {}
+    for i in range(1, depth + 1):
+        circ = build_random_circuit(1, i)
+        (tot_simu, tot_g_simu) = bench_run_pattern(circ)
+        perf_over_depth[i] = {"simu": tot_simu, "g-simu": tot_g_simu}
+    return perf_over_depth
+
+
+def bench_n_qubits(n_qubits=1):
+    perf_over_n_qubits = {}
+    for i in range(1, n_qubits + 1):
+        circ = build_random_circuit(i, 1)
+        (tot_simu, tot_g_simu) = bench_run_pattern(circ)
+        perf_over_n_qubits[i] = {"simu": tot_simu, "g-simu": tot_g_simu}
+    return perf_over_n_qubits
