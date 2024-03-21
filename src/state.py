@@ -15,7 +15,7 @@ def _get_state(state: State) -> np.ndarray:
     """
     Build the given state.
     """
-    S = np.zeros((2,), dtype=complex)
+    S = np.zeros((2,), dtype=np.complex128)
     match state:
         case State.ZERO:
             S[0] = 1

@@ -17,7 +17,7 @@ class MBQC:
         self.state_vec = StateVec(
             len(input_nodes)
         )  # Initializes a statevec according to the input nodes.
-        logger.info(f"Initialized simulator with {len(input_nodes)} qubits")
+        # logger.info(f"Initialized simulator with {len(input_nodes)} qubits")
         logger.debug(f"Initial statevec = {self.state_vec}, inputs={input_nodes}")
 
     def __repr__(self) -> str:
@@ -49,7 +49,7 @@ class MBQC:
                     node=i, plane=p, angle=alpha, s_domain=s_domain, t_domain=t_domain
                 ):
                     self.measurements[i] = self.state_vec.measure(
-                        i, p, alpha, s_domain, t_domain
+                        i, p, alpha, s_domain, t_domain, self.measurements
                     )
                 case X(node=i, domain=domain):
                     self.state_vec.apply_correction("X", i, domain, self.measurements)
