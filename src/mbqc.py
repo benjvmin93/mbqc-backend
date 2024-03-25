@@ -7,18 +7,12 @@ from .logger import logger
 class MBQC:
     def __init__(
         self,
-        pattern: list[list],
-        Nnode: int,
-        input_nodes: list[int],
-        output_nodes: list[int],
+        pattern: Pattern,
     ):
-        self.pattern = Pattern(pattern, Nnode, input_nodes, output_nodes)
-        self.measurements = [None] * Nnode
-        self.state_vec = StateVec(
-            len(input_nodes)
-        )  # Initializes a statevec according to the input nodes.
+        self.pattern = Pattern(pattern)
+        self.measurements = [None] * pattern.Nnode
+        self.state_vec = None
         # logger.info(f"Initialized simulator with {len(input_nodes)} qubits")
-        logger.debug(f"Initial statevec = {self.state_vec}, inputs={input_nodes}")
 
     def __repr__(self) -> str:
         return f"statevec: {self.state_vec}, measurements: {self.measurements}"
@@ -29,6 +23,8 @@ class MBQC:
 
     def sort_qubits(self) -> None:
         """sort the qubit order in internal statevector"""
+        print(f"output nodes = {self.pattern.output_nodes}")
+        print(f"node index = {self.state_vec.node_index}")
         for i, ind in enumerate(self.pattern.output_nodes):
             if not self.state_vec.node_index[i] == ind:
                 move_from = self.state_vec.node_index.index(ind)
@@ -39,21 +35,23 @@ class MBQC:
                 )
 
     def run_pattern(self):
+        # Initialize statevec with input nodes.
+        self.state_vec = StateVec(len(self.pattern.input_nodes))
         for cmd in self.pattern.cmd_list:
             match cmd:
-                case N(node=i):
+                case N(node=i):  # Add node in |+>
                     self.state_vec.prepare_state(i)
-                case E(nodes=(i, j)):
+                case E(nodes=(i, j)):  # Entangle nodes
                     self.state_vec.entangle(i, j)
-                case M(
+                case M(  # Measure node
                     node=i, plane=p, angle=alpha, s_domain=s_domain, t_domain=t_domain
                 ):
                     self.measurements[i] = self.state_vec.measure(
                         i, p, alpha, s_domain, t_domain, self.measurements
                     )
-                case X(node=i, domain=domain):
+                case X(node=i, domain=domain):  # Correction X
                     self.state_vec.apply_correction("X", i, domain, self.measurements)
-                case Z(node=i, domain=domain):
+                case Z(node=i, domain=domain):  # Correction Z
                     self.state_vec.apply_correction("Z", i, domain, self.measurements)
                 case _:
                     e = f"Command type {cmd} doesn't exist."

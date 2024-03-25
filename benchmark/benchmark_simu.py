@@ -1,56 +1,261 @@
-import timeit
 from copy import deepcopy
 import time
+from src.mbqc import MBQC
+from src.command import N, E, M, X, Z
+from src.state_vec import StateVec
+from graphix.graphix.simulator import PatternSimulator
+from graphix.graphix import Circuit, Pattern
+import numpy as np
+
+
+def get_random_different_from(random_list: list[int], max: int):
+    b = np.random.randint(max)
+    while b in random_list:
+        b = np.random.randint(max)
+    return b
+
+
+def build_random_circuit(n: int = 1, depth: int = 1):
+    """
+    Build a random circuit according to the number of qubits and depth of the circuit.
+    Picks random between [0,3[ to choose which type of gate.
+    Then picks appropriate control (if there are) and target, which are ensured to be different thanks to get_random_different_from function.
+    """
+    circuit = Circuit(n)
+    one_qubit_gates = [
+        circuit.h,
+        circuit.s,
+        circuit.x,
+        circuit.y,
+        circuit.z,
+        circuit.rx,
+        circuit.ry,
+        circuit.rz,
+    ]
+    two_qubit_gates = [circuit.cnot, circuit.rzz]
+    while depth != 0:
+        gate_type = 0  # If there is one qubit, we can only use one_qubit gates
+        if n > 1:
+            gate_type = np.random.randint(2)
+        if gate_type == 0:  # One qubit gate
+            gate = one_qubit_gates[np.random.randint(len(one_qubit_gates))]
+            target = np.random.randint(n)
+            if gate == circuit.rx or gate == circuit.ry or gate == circuit.rz:
+                gate(target, np.random.rand() * np.pi)
+            else:
+                gate(target)
+        else:  # Two qubits gate
+            gate = two_qubit_gates[np.random.randint(len(two_qubit_gates))]
+            control = np.random.randint(n)
+            target = get_random_different_from([control], n)
+            if gate == circuit.rzz:
+                gate(control, target, np.random.rand() * np.pi)
+            else:
+                gate(control, target)
+        depth -= 1
+        if depth == 0 and circuit.instruction == []:
+            depth += 1
+    return circuit
+
+
+def finalize(pattern, state_vec):
+    sort_qubits(pattern, state_vec)
+    state_vec.normalize()
+
+
+def sort_qubits(pattern, state_vec) -> None:
+    """sort the qubit order in internal statevector"""
+    # print(f'output_nodes: {pattern.output_nodes}')
+    for i, ind in enumerate(pattern.output_nodes):
+        # print(f'node_index: {state_vec.node_index}')
+        if not state_vec.node_index[i] == ind:
+            move_from = state_vec.node_index.index(ind)
+            state_vec.swap((i, move_from))
+            state_vec.node_index[i], state_vec.node_index[move_from] = (
+                state_vec.node_index[move_from],
+                state_vec.node_index[i],
+            )
+
+
+def g_finalize(pattern, backend):
+    g_sort_qubits(pattern, backend)
+    backend.state.normalize()
+
+
+def g_sort_qubits(pattern, backend) -> None:
+    """sort the qubit order in internal statevector"""
+    for i, ind in enumerate(pattern.output_nodes):
+        if not backend.node_index[i] == ind:
+            move_from = backend.node_index.index(ind)
+            backend.state.swap((i, move_from))
+            backend.node_index[i], backend.node_index[move_from] = (
+                backend.node_index[move_from],
+                backend.node_index[i],
+            )
+
+
+def get_exec_time(fun, args: list = []):
+    """
+    Get the execution time of a function.
+    Returns a tuple with the return of the function and the time it last
+    """
+    t1 = time.time()
+    res = fun(*args)
+    t2 = time.time()
+    return (res, t2 - t1)
+
+
+def run_pattern(simu: MBQC, time_dict: dict):
+    """
+    Our simulator. Updates time_dict with the execution times for each pattern commands.
+    """
+    cmd_list = simu.pattern.cmd_list
+    simu.state_vec = StateVec(len(cmd_list))
+    for cmd in cmd_list:
+        print(f"Node index: {simu.state_vec.node_index}")
+        match cmd:
+            case N(node=i):
+                time = get_exec_time(simu.state_vec.prepare_state, [i])
+                time_dict["N"]["simu"] += time[1]
+            case E(nodes=(i, j)):
+                time = get_exec_time(simu.state_vec.entangle, [i, j])
+                time_dict["E"]["simu"] += time[1]
+            case M(node=i, plane=p, angle=alpha, s_domain=s_domain, t_domain=t_domain):
+                time = get_exec_time(
+                    simu.state_vec.measure,
+                    [i, p, alpha, s_domain, t_domain, simu.measurements],
+                )
+                simu.measurements[i] = time[0]
+                time_dict["M"]["simu"] += time[1]
+            case X(node=i, domain=domain):
+                time = get_exec_time(
+                    simu.state_vec.apply_correction, ["X", i, domain, simu.measurements]
+                )
+                time_dict["X"]["simu"] += time[1]
+            case Z(node=i, domain=domain):
+                time = get_exec_time(
+                    simu.state_vec.apply_correction, ["Z", i, domain, simu.measurements]
+                )
+                time_dict["Z"]["simu"] += time[1]
+            case _:
+                e = f"Command type {cmd} doesn't exist."
+                raise KeyError(e)
+    time = get_exec_time(finalize, [simu.pattern, simu.state_vec])
+    time_dict["finalize"]["simu"] += time[1]
+
+
+def g_run_pattern(sv_simu: PatternSimulator, time_dict: dict):
+    """
+    Graphix run pattern function override.
+    Updates time_dict with execution times according to each commands.
+    """
+    pattern = sv_simu.pattern
+    backend = sv_simu.backend
+    backend.add_nodes(pattern.input_nodes)
+    for cmd in list(pattern):
+        if cmd[0] == "N":
+            time = get_exec_time(backend.add_nodes, [[cmd[1]]])
+            time_dict["N"]["graphix"] += time[1]
+        elif cmd[0] == "E":
+            time = get_exec_time(backend.entangle_nodes, [cmd[1]])
+            time_dict["E"]["graphix"] += time[1]
+        elif cmd[0] == "M":
+            time = get_exec_time(backend.measure, [cmd])
+            time_dict["M"]["graphix"] += time[1]
+        elif cmd[0] == "X":
+            time = get_exec_time(backend.correct_byproduct, [cmd])
+            time_dict["X"]["graphix"] += time[1]
+        elif cmd[0] == "Z":
+            time = get_exec_time(backend.correct_byproduct, [cmd])
+            time_dict["Z"]["graphix"] += time[1]
+        elif cmd[0] == "C":
+            backend.apply_clifford(cmd)
+        else:
+            raise ValueError("invalid commands")
+    time = get_exec_time(g_finalize, [sv_simu.pattern, sv_simu.backend])
+    time_dict["finalize"]["graphix"] += time[1]
 
 
 class BenchmarkSimu:
-    def bench_functions(
-        self,
-        functions,
-        it=1000,
-        label1: str = "",
-        label2: str = "",
-        args1=[],
-        args2=[],
-    ):
-        labels = (functions[0].__name__, functions[1].__name__)
-        if label1 != "" and label2 != "":
-            labels = (label1, label2)
+    """
+    Benchmark class used to compare graphix state vector simulator and our simulator.
+    """
 
-        t1 = timeit.timeit(
-            "f1(*args1)", number=it, globals={"f1": functions[0], "args1": args1}
-        )
+    def __init__(self, pattern: Pattern):
+        self.pattern = pattern
+        self.__sv_simu = MBQC(pattern)
+        self.__graphix_simu = PatternSimulator(pattern, pr_calc=True)
 
-        t2 = timeit.timeit(
-            "f2(*args2)", number=it, globals={"f2": functions[1], "args2": args2}
-        )
+    def bench_mbqc_simu(self, it=1000):
+        """
+        Computes execution times between mbqc simulator with graphix.
+        """
+        time_dict = {"sv_simu": 0.0, "graphix_simu": 0.0}
 
-        return {labels[0]: t1, labels[1]: t2}
-
-    def bench_class_functions(
-        self,
-        obj1,
-        obj2,
-        functions,
-        it=1000,
-        args1=[],
-        args2=[],
-        labels: tuple[str, str] | tuple[None, None] = (None, None),
-    ):
-        if labels == (None, None):
-            labels = (functions[0].__name__, functions[1].__name__)
-        t1 = 0.0
+        # Run our simulator and graphix simulator multiple times so we can get the average execution times for both.
         for _ in range(it):
-            loop_t1 = time.perf_counter()
-            functions[0](deepcopy(obj1), *args1)
-            loop_t2 = time.perf_counter()
-            t1 += loop_t2 - loop_t1
-        t2 = 0.0
+            # Copy sv_simu
+            sv_copy = deepcopy(self.__sv_simu)
+            sv_time = get_exec_time(sv_copy.run_pattern)
+            time_dict["sv_simu"] += sv_time[1]
+            # Copy graphix simu
+            g_sv_copy = deepcopy(self.__graphix_simu)
+            graphix_time = get_exec_time(g_sv_copy.run)
+            time_dict["graphix_simu"] += graphix_time[1]
+
+        time_dict["sv_simu"] /= it
+        time_dict["graphix_simu"] /= it
+
+        return time_dict
+
+    def bench_init_times(self, it=1000):
+        """
+        Benchmark initialization times between graphix simulator and our own simulator.
+        """
+        init_times = {"simu": 0.0, "graphix": 0.0}
         for _ in range(it):
-            loop_t1 = time.perf_counter()
-            functions[1](deepcopy(obj2), *args2)
-            loop_t2 = time.perf_counter()
-            t2 += loop_t2 - loop_t1
-        t1 /= it
-        t2 /= it
-        return {f"{labels[0]}": t1, f"{labels[1]}": t2}
+            t1 = time.time()
+            MBQC(self.pattern)
+            t2 = time.time()
+            init_times["simu"] += t2 - t1
+            t1 = time.time()
+            PatternSimulator(self.pattern)
+            t2 = time.time()
+            init_times["graphix"] += t2 - t1
+
+        init_times["simu"] /= it
+        init_times["graphix"] /= it
+
+        return init_times
+
+    def bench_cmd_times(self, it=1000):
+        """
+        Benchmark individual command times. Computes the average of execution time for each commands + finalize method.
+        """
+        time_cmd_dict = {
+            "N": {"simu": 0, "graphix": 0},
+            "E": {"simu": 0, "graphix": 0},
+            "M": {"simu": 0, "graphix": 0},
+            "X": {"simu": 0, "graphix": 0},
+            "Z": {"simu": 0, "graphix": 0},
+            "finalize": {"simu": 0, "graphix": 0},
+        }
+
+        for _ in range(it):
+            # Copy sv_simu
+            sv_copy = deepcopy(self.__sv_simu)
+            run_pattern(sv_copy, time_cmd_dict)
+            # Copy graphix simu
+            g_sv_copy = deepcopy(self.__graphix_simu)
+            g_run_pattern(g_sv_copy, time_cmd_dict)
+
+        # Normalize to get the time average.
+        avg_time_cmd = {
+            key: {
+                "simu": time_cmd_dict[key]["simu"] / it,
+                "graphix": time_cmd_dict[key]["graphix"] / it,
+            }
+            for key in time_cmd_dict.keys()
+        }
+
+        return avg_time_cmd

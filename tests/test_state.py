@@ -4,18 +4,28 @@ import unittest
 
 
 class TestState(unittest.TestCase):
-    def test_states(self):
+    def test_zero(self):
         assert np.array_equiv(zero.flatten(), np.array([1, 0], dtype=complex))
+
+    def test_one(self):
         assert np.array_equiv(one.flatten(), np.array([0, 1], dtype=complex))
+
+    def test_plus(self):
         assert np.array_equiv(
             plus.flatten(), np.array([1, 1] / np.sqrt(2), dtype=complex)
         )
+
+    def test_minus(self):
         assert np.array_equiv(
             minus.flatten(), np.array([1, -1] / np.sqrt(2), dtype=complex)
         )
+
+    def test_iplus(self):
         assert np.array_equiv(
             iplus.flatten(), np.array([1, 1j] / np.sqrt(2), dtype=complex)
         )
+
+    def test_iminus(self):
         assert np.array_equiv(
             iminus.flatten(), np.array([1, -1j] / np.sqrt(2), dtype=complex)
         )

@@ -1,4 +1,4 @@
-from graphix import Circuit
+from graphix.graphix import Circuit
 from src.mbqc import MBQC
 import numpy as np
 import unittest
@@ -6,7 +6,7 @@ import unittest
 
 def get_pattern_from_circ(circ):
     pattern = circ.standardize_and_transpile()
-    return MBQC(list(pattern), pattern.Nnode, pattern.input_nodes, pattern.output_nodes)
+    return MBQC(pattern)
 
 
 class TestSimu(unittest.TestCase):

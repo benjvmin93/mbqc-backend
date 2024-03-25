@@ -5,7 +5,9 @@ from .command import Plane
 from .logger import logger
 from .state import plus
 
-rng = np.random.default_rng()
+import random
+
+# rng = np.random.default_rng()
 
 CZ_TENSOR = np.array(
     [[[[1, 0], [0, 0]], [[0, 1], [0, 0]]], [[[0, 0], [1, 0]], [[0, 0], [0, -1]]]],
@@ -46,10 +48,11 @@ def meas_op(
     """
     # Update angle
     cliff_op = get(vop)
-    measure_update = pauli.MeasureUpdate.compute(
-        pauli.Plane[plane], s_signal % 2 == 1, t_signal % 2 == 1, cliff_op
-    )
-    angle = angle * measure_update.coeff + measure_update.add_term
+    s = s_signal % 2 == 1
+    t = t_signal % 2 == 1
+    measure_update = pauli.MeasureUpdate.compute(pauli.Plane[plane], s, t, cliff_op)
+    angle *= measure_update.coeff
+    angle += measure_update.add_term
     angle *= np.pi
 
     # Build projector operator
@@ -108,19 +111,18 @@ class StateVec:
         new_qubit = plus
         self.tensor(new_qubit)
         self.node_index.append(target)
-        logger.debug(
-            "[N]({index}): statevec={flat}, shape={shape}".format(
-                index=self.node_index.index(target),
-                flat=self.psi.flatten(),
-                shape=self.psi.flatten().shape,
-            )
-        )
+        # logger.debug(
+        #     "[N]({index}): statevec={flat}, shape={shape}".format(
+        #         index=self.node_index.index(target),
+        #         flat=self.psi.flatten(),
+        #         shape=self.psi.flatten().shape,
+        #     )
+        # )
 
     def entangle(self, control: int, target: int) -> None:
         """
         Entangles the two qubits by applying CZ on target according to control.
         """
-        assert control != target
         # contraction: 2nd index - control index, and 3rd index - target index.
         control = self.node_index.index(control)
         target = self.node_index.index(target)
@@ -128,7 +130,7 @@ class StateVec:
         # sort back axes
         self.psi = np.moveaxis(self.psi, (0, 1), (control, target))
         # logger.info(f"Entangling qubit {control} with qubit {target}")
-        logger.debug(f"[E]({control},{target}): statevec={self.psi.flatten()}")
+        # logger.debug(f"[E]({control},{target}): statevec={self.psi.flatten()}")
 
     def swap(self, qubits: tuple[int, int]) -> None:
         """swap qubits
@@ -144,9 +146,9 @@ class StateVec:
         self.psi = np.tensordot(SWAP_TENSOR, self.psi, ((2, 3), qubits))
         # sort back axes
         self.psi = np.moveaxis(self.psi, (0, 1), qubits)
-        logger.debug(
-            f"[SWAP]({qubits[0]},{qubits[1]}): statevec={self.psi.flatten()}, shape={self.psi.shape}"
-        )
+        # logger.debug(
+        #     f"[SWAP]({qubits[0]},{qubits[1]}): statevec={self.psi.flatten()}, shape={self.psi.shape}"
+        # )
 
     def measure(
         self,
@@ -165,29 +167,36 @@ class StateVec:
         """
         # logger.info(f"Measuring qubit {index} in plane {plane} and angle {angle}.")
 
-        # Get right index within self.node_index
-        index_sv = self.node_index.index(index)
-
         # Get projected states
         s_signal = sum([measurements[i] for i in s_domain])
         t_signal = sum([measurements[i] for i in t_domain])
         proj_plus = meas_op(s_signal, t_signal, angle, plane, vop, 0)
+
+        # Get right index within self.node_index
+        index_sv = self.node_index.index(index)
         projected_plus = np.tensordot(proj_plus, self.psi, (1, index_sv))
         projected_plus = np.moveaxis(projected_plus, 0, index_sv)
 
         # Computes probabilities of getting each state
         proba_Plus = abs(_norm(projected_plus)) ** 2
-        proba_Minus = 1 - proba_Plus
 
-        logger.debug(
-            "[M]({index}): p(+)={pplus}, p(-)={pminus}".format(
-                index=index, pplus=proba_Plus, pminus=proba_Minus
-            )
-        )
+        # logger.debug(
+        #     "[M]({index}): p(+)={pplus}, p(-)={pminus}".format(
+        #         index=index, pplus=proba_Plus, pminus={1 - proba_Plus}
+        #     )
+        # )
 
         # Simulate measurement according to probabilities
         # Binomial trial with success (getting 1) probability p (probability of getting |->).
-        measurement = rng.binomial(n=1, p=proba_Minus)
+        measurement = random.choices([0, 1], weights=[proba_Plus, 1 - proba_Plus]).pop()
+        """if rng.random() > proba_Plus:
+            measurement = 1
+            proj_minus = meas_op(s_signal, t_signal, angle, plane, vop, 1)
+            self.single_qubit_evolution(proj_minus, index_sv)
+        else:
+            self.psi = projected_plus"""
+
+        # measurement = rng.choice([0, 1], [proba_Plus, 1 - proba_Plus])
 
         if measurement == 0:  # We already computed the state projected over |+>
             self.psi = projected_plus
@@ -195,14 +204,12 @@ class StateVec:
             proj_minus = meas_op(s_signal, t_signal, angle, plane, vop, 1)
             self.single_qubit_evolution(proj_minus, index_sv)
 
-        logger.debug("[M]({index}): res={res}".format(index=index, res=measurement))
-
         flat = self.psi.flatten()
-        logger.debug(
-            "[M]({index}): projected_state={projstate}, shape={shape}".format(
-                index=index, projstate=flat, shape=flat.shape
-            )
-        )
+        # logger.debug(
+        #     "[M]({index}): projected_state={projstate}, shape={shape}".format(
+        #         index=index, projstate=flat, shape=flat.shape
+        #     )
+        # )
 
         # Remove measured qubit from state vector
         self.remove_qubit(index_sv)
@@ -217,8 +224,8 @@ class StateVec:
         """
         Applies correction 'X' or 'Z' to the qubit at 'index' according to the signal domain measurements.
         """
-        # Get right index within self.node_index
         if sum([measurement_results[i] for i in domain]) % 2 == 1:
+            # Get right index within self.node_index
             sv_index = self.node_index.index(index)
             cliff_gate = X if type == "X" else Z
             self.single_qubit_evolution(cliff_gate.matrix, sv_index)
@@ -250,26 +257,20 @@ class StateVec:
         Normalize vector state (ie. divides it by its norm).
         """
         norm = _norm(self.psi)
-        self.psi = self.psi / norm
+        self.psi /= norm
 
     def remove_qubit(self, index: int) -> None:
         """
         Remove qubit at 'index' from the state vector.
         """
-        assert not np.isclose(_norm(self.psi), 0)
+        norm = _norm(self.psi)
+        assert not np.isclose(norm, 0)
         psi = self.psi.take(indices=0, axis=index)
+        psi_norm = _norm(psi)
         self.psi = (
-            psi
-            if not np.isclose(_norm(psi), 0)
-            else self.psi.take(indices=1, axis=index)
+            psi if not np.isclose(psi_norm, 0) else self.psi.take(indices=1, axis=index)
         )
         self.normalize()
-        flat = self.psi.flatten()
-        logger.debug(
-            "[remove_qubit]: new_psi={flat}, shape={shape}, norm={norm}".format(
-                flat=flat, shape=flat.shape, norm=_norm(flat)
-            )
-        )
 
 
 def _norm(psi: np.ndarray) -> float:
