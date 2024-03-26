@@ -36,7 +36,7 @@ class TestStatevec(unittest.TestCase):
         Removes one qubit and checks if the state vector is correct.
         """
         nQubits = 2
-        sv = StateVec(nQubits)
+        sv = StateVec(list(range(nQubits)))
 
         for i in range(nQubits):
             sv.entangle(i, (i + 1) % nQubits)
@@ -62,10 +62,10 @@ class TestStatevec(unittest.TestCase):
         k = 0
         for plane in ["XY", "YZ", "XZ"]:
             m_op = meas_op(0, 0, 0, plane, 0, 0)
-            sv = StateVec(n)
+            sv = StateVec(list(range(n)))
             sv.single_qubit_evolution(m_op, [k])
             sv.remove_qubit(k)
-            sv2 = StateVec(n - 1)
+            sv2 = StateVec(list(range(n - 1)))
             np.testing.assert_almost_equal(
                 np.abs(sv.psi.flatten() @ sv2.psi.flatten().conj()), 1
             )
@@ -78,10 +78,10 @@ class TestStatevec(unittest.TestCase):
         k = 0
         for state in [plus, zero, one, iplus, iminus]:
             m_op = np.outer(state, state.T.conjugate())
-            sv = StateVec(n)
+            sv = StateVec(list(range(n)))
             sv.single_qubit_evolution(m_op, [k])
             sv.remove_qubit(k)
-            sv2 = StateVec(n - 1)
+            sv2 = StateVec(list(range(n - 1)))
             np.testing.assert_almost_equal(
                 np.abs(sv.psi.flatten().dot(sv2.psi.flatten().conj())), 1
             )
@@ -95,7 +95,7 @@ class TestStatevec(unittest.TestCase):
         # for measurement into |-> returns [[0, 0], ..., [0, 0]] (whose norm is zero)
         state = minus
         m_op = np.outer(state, state.T.conjugate())
-        sv = StateVec(n)
+        sv = StateVec(list(range(n)))
         sv.single_qubit_evolution(m_op, [k])
         with self.assertRaises(AssertionError):
             sv.remove_qubit(k)

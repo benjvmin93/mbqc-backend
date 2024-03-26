@@ -12,7 +12,6 @@ class MBQC:
         self.pattern = Pattern(pattern)
         self.measurements = [None] * pattern.Nnode
         self.state_vec = None
-        # logger.info(f"Initialized simulator with {len(input_nodes)} qubits")
 
     def __repr__(self) -> str:
         return f"statevec: {self.state_vec}, measurements: {self.measurements}"
@@ -36,7 +35,7 @@ class MBQC:
 
     def run_pattern(self):
         # Initialize statevec with input nodes.
-        self.state_vec = StateVec(len(self.pattern.input_nodes))
+        self.state_vec = StateVec(self.pattern.input_nodes)
         for cmd in self.pattern.cmd_list:
             match cmd:
                 case N(node=i):  # Add node in |+>

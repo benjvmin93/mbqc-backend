@@ -68,14 +68,15 @@ def meas_op(
 
 
 class StateVec:
-    def __init__(self, nQubits: int = 1):
+    def __init__(self, input_nodes=[]):
         """
         Initalize a new state vector in the |+> state.
         """
+        nQubits = len(input_nodes)
         self.psi = np.ones((2,) * nQubits) / 2 ** (
             nQubits / 2
         )  # Initialize statevector in |+> ⊗^n
-        self.node_index = list(range(nQubits))
+        self.node_index = input_nodes
 
     def __repr__(self) -> str:
         return str(f"{self.psi.flatten()}")

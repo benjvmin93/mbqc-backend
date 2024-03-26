@@ -1,4 +1,4 @@
-from graphix.graphix import Circuit
+from graphix import Circuit
 from src.mbqc import MBQC
 import numpy as np
 import unittest
