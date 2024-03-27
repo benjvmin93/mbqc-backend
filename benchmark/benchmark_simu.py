@@ -15,46 +15,32 @@ def get_random_different_from(random_list: list[int], max: int):
     return b
 
 
-def build_random_circuit(n: int = 1, depth: int = 1):
+def simple_random_circuit(nqubit, depth):
+    r"""Generate a test circuit for benchmarking.
+
+    This function generates a circuit with nqubit qubits and depth layers,
+    having layers of CNOT and Rz gates with random placements.
+
+    Parameters
+    ----------
+    nqubit : int
+        number of qubits
+    depth : int
+        number of layers
+
+    Returns
+    -------
+    circuit : graphix.transpiler.Circuit object
+        generated circuit
     """
-    Build a random circuit according to the number of qubits and depth of the circuit.
-    Picks random between [0,3[ to choose which type of gate.
-    Then picks appropriate control (if there are) and target, which are ensured to be different thanks to get_random_different_from function.
-    """
-    circuit = Circuit(n)
-    one_qubit_gates = [
-        circuit.h,
-        circuit.s,
-        circuit.x,
-        circuit.y,
-        circuit.z,
-        circuit.rx,
-        circuit.ry,
-        circuit.rz,
-    ]
-    two_qubit_gates = [circuit.cnot, circuit.rzz]
-    while depth != 0:
-        gate_type = 0  # If there is one qubit, we can only use one_qubit gates
-        if n > 1:
-            gate_type = np.random.randint(2)
-        if gate_type == 0:  # One qubit gate
-            gate = one_qubit_gates[np.random.randint(len(one_qubit_gates))]
-            target = np.random.randint(n)
-            if gate == circuit.rx or gate == circuit.ry or gate == circuit.rz:
-                gate(target, np.random.rand() * np.pi)
-            else:
-                gate(target)
-        else:  # Two qubits gate
-            gate = two_qubit_gates[np.random.randint(len(two_qubit_gates))]
-            control = np.random.randint(n)
-            target = get_random_different_from([control], n)
-            if gate == circuit.rzz:
-                gate(control, target, np.random.rand() * np.pi)
-            else:
-                gate(control, target)
-        depth -= 1
-        if depth == 0 and circuit.instruction == []:
-            depth += 1
+    qubit_index = [i for i in range(nqubit)]
+    circuit = Circuit(nqubit)
+    for _ in range(depth):
+        np.random.shuffle(qubit_index)
+        for j in range(len(qubit_index) // 2):
+            circuit.cnot(qubit_index[2 * j], qubit_index[2 * j + 1])
+        for j in range(len(qubit_index)):
+            circuit.rz(qubit_index[j], 2 * np.pi * np.random.random())
     return circuit
 
 
@@ -110,9 +96,9 @@ def run_pattern(simu: MBQC, time_dict: dict):
     Our simulator. Updates time_dict with the execution times for each pattern commands.
     """
     cmd_list = simu.pattern.cmd_list
-    simu.state_vec = StateVec(len(cmd_list))
+    simu.state_vec = StateVec(simu.pattern.input_nodes)
     for cmd in cmd_list:
-        print(f"Node index: {simu.state_vec.node_index}")
+        # print(f"Node index: {simu.state_vec.node_index}")
         match cmd:
             case N(node=i):
                 time = get_exec_time(simu.state_vec.prepare_state, [i])
@@ -191,7 +177,6 @@ class BenchmarkSimu:
         Computes execution times between mbqc simulator with graphix.
         """
         time_dict = {"sv_simu": 0.0, "graphix_simu": 0.0}
-
         # Run our simulator and graphix simulator multiple times so we can get the average execution times for both.
         for _ in range(it):
             # Copy sv_simu
@@ -202,6 +187,15 @@ class BenchmarkSimu:
             g_sv_copy = deepcopy(self.__graphix_simu)
             graphix_time = get_exec_time(g_sv_copy.run)
             time_dict["graphix_simu"] += graphix_time[1]
+            # Ensure we get the same results
+            try:
+                assert np.array_equal(
+                    np.abs(sv_copy.state_vec.psi), np.abs(g_sv_copy.backend.state.psi)
+                )
+            except:
+                print(f"sv: {sv_copy.state_vec.psi.flatten()}")
+                print(f"graphix_sv: {g_sv_copy.backend.state.psi.flatten()}")
+                break
 
         time_dict["sv_simu"] /= it
         time_dict["graphix_simu"] /= it

@@ -1,5 +1,5 @@
 import numpy as np
-from .clifford import X, Z, get
+from .clifford import X, Z, get, TABLE
 from . import pauli
 from .command import Plane
 from .logger import logger
@@ -20,50 +20,12 @@ SWAP_TENSOR = np.array(
 )
 
 
-def meas_op(
-    s_signal: int, t_signal: int, angle: float, plane: Plane, vop: int, measurement: int
-) -> np.ndarray:
-    """Returns the projection operator.
-
-    Parameters
-    ----------
-    s_signal: int
-        sum of all s_domain indices
-    t_signal: int
-        sum of all t_domain indices
-    angle : float
-        original measurement angle in radian
-    plane : 'XY', 'YZ' or 'ZX'
-        measurement plane on which angle shall be defined
-    vop : int
-        index of local Clifford (vop), see clifford.TABLE
-    measurement : 0 or 1
-        choice of measurement outcome. measured eigenvalue would be (-1)**choice.
-
-    Returns
-    -------
-    op : numpy array
-        projection operator
-
-    """
-    # Update angle
-    cliff_op = get(vop)
-    s = s_signal % 2 == 1
-    t = t_signal % 2 == 1
-    measure_update = pauli.MeasureUpdate.compute(pauli.Plane[plane], s, t, cliff_op)
-    angle *= measure_update.coeff
-    angle += measure_update.add_term
-    angle *= np.pi
-
-    # Build projector operator
-    vec = measure_update.new_plane.polar(angle)
+def meas_op(vec: tuple[float, float, float], measurement: int):
     op_mat = np.eye(2, dtype=np.complex128) / 2
     for i in range(3):
-        cliff_op = get(i + 1)
-        op_mat += (-1) ** (measurement) * vec[i] * cliff_op.matrix / 2
-    logger.debug(
-        "[meas_op]: angle={angle}, mOP=\n{op_mat}".format(angle=angle, op_mat=op_mat)
-    )
+        cliff = get(i + 1).matrix
+        sign = (-1) ** measurement
+        op_mat += sign * vec[i] * cliff / 2
     return op_mat
 
 
@@ -171,49 +133,33 @@ class StateVec:
         # Get projected states
         s_signal = sum([measurements[i] for i in s_domain])
         t_signal = sum([measurements[i] for i in t_domain])
-        proj_plus = meas_op(s_signal, t_signal, angle, plane, vop, 0)
 
-        # Get right index within self.node_index
-        index_sv = self.node_index.index(index)
-        projected_plus = np.tensordot(proj_plus, self.psi, (1, index_sv))
-        projected_plus = np.moveaxis(projected_plus, 0, index_sv)
+        measure_update = pauli.MeasureUpdate.compute(
+            pauli.Plane[plane], s_signal % 2 == 1, t_signal % 2 == 1, TABLE[vop]
+        )
+        print(f"simu: FIRST ANGLE {angle}")
+        angle *= np.pi
+        angle = angle * measure_update.coeff + measure_update.add_term
+        print(f"SIMU Final computed angle: {angle}")
+        vec = measure_update.new_plane.polar(angle)
 
-        # Computes probabilities of getting each state
-        proba_Plus = abs(_norm(projected_plus)) ** 2
-
-        # logger.debug(
-        #     "[M]({index}): p(+)={pplus}, p(-)={pminus}".format(
-        #         index=index, pplus=proba_Plus, pminus={1 - proba_Plus}
-        #     )
-        # )
-
-        # Simulate measurement according to probabilities
-        # Binomial trial with success (getting 1) probability p (probability of getting |->).
+        op = meas_op(vec, measurement=0)  # Assume measurement == 0
+        loc = self.node_index.index(index)
+        proba_Plus = self.expectation_single(op, loc)
         measurement = random.choices([0, 1], weights=[proba_Plus, 1 - proba_Plus]).pop()
-        """if rng.random() > proba_Plus:
-            measurement = 1
-            proj_minus = meas_op(s_signal, t_signal, angle, plane, vop, 1)
-            self.single_qubit_evolution(proj_minus, index_sv)
-        else:
-            self.psi = projected_plus"""
+        if measurement == 1:
+            op = meas_op(vec, measurement=1)  # Re-compute measurement operator
 
-        # measurement = rng.choice([0, 1], [proba_Plus, 1 - proba_Plus])
-
-        if measurement == 0:  # We already computed the state projected over |+>
-            self.psi = projected_plus
-        else:  # Project onto |->
-            proj_minus = meas_op(s_signal, t_signal, angle, plane, vop, 1)
-            self.single_qubit_evolution(proj_minus, index_sv)
-
-        flat = self.psi.flatten()
         # logger.debug(
         #     "[M]({index}): projected_state={projstate}, shape={shape}".format(
         #         index=index, projstate=flat, shape=flat.shape
         #     )
         # )
 
+        # Project state
+        self.psi = self.single_qubit_evolution(op, loc)
         # Remove measured qubit from state vector
-        self.remove_qubit(index_sv)
+        self.remove_qubit(loc)
         # Remove qubit index from node list
         self.node_index.remove(index)
 
@@ -229,15 +175,16 @@ class StateVec:
             # Get right index within self.node_index
             sv_index = self.node_index.index(index)
             cliff_gate = X if type == "X" else Z
-            self.single_qubit_evolution(cliff_gate.matrix, sv_index)
+            self.psi = self.single_qubit_evolution(cliff_gate.matrix, sv_index)
             # logger.info(f"[{type}]({index}): new_psi={self.psi.flatten()}")
 
     def single_qubit_evolution(self, op: np.ndarray, index: int):
         """
         Apply one qubit operator to |psi> at right index.
         """
-        self.psi = np.tensordot(op, self.psi, (1, index))
-        self.psi = np.moveaxis(self.psi, 0, index)
+        psi = np.tensordot(op, self.psi, (1, index))
+        psi = np.moveaxis(psi, 0, index)
+        return psi
 
     def multi_qubit_evolution(self, op: np.ndarray, qargs: tuple[int, int]) -> None:
         """
@@ -272,6 +219,10 @@ class StateVec:
             psi if not np.isclose(psi_norm, 0) else self.psi.take(indices=1, axis=index)
         )
         self.normalize()
+
+    def expectation_single(self, op: np.ndarray, index: int) -> complex:
+        evolved = self.single_qubit_evolution(op, index)
+        return np.dot(self.psi.flatten().conjugate(), evolved.flatten())
 
 
 def _norm(psi: np.ndarray) -> float:

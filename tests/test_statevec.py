@@ -1,6 +1,7 @@
 import unittest
 from src.state_vec import StateVec, meas_op
-from src.pauli import Plane
+from src.pauli import Plane, MeasureUpdate
+from src.clifford import get
 from src.state import zero, one, plus, minus, iplus, iminus
 import numpy as np
 
@@ -40,13 +41,17 @@ class TestStatevec(unittest.TestCase):
 
         for i in range(nQubits):
             sv.entangle(i, (i + 1) % nQubits)
-        m_op = meas_op(
-            s_signal=0, t_signal=0, angle=0, plane="XY", vop=0, measurement=0
-        )
-        sv.single_qubit_evolution(m_op, 0)
-        sv2 = np.copy(sv.psi)
 
-        sv.remove_qubit(0)
+        sv2 = np.copy(sv.psi)
+        sv.measure(
+            index=0,
+            plane="XY",
+            angle=0,
+            s_domain=[],
+            t_domain=[],
+            measurements=[None, None],
+        )
+
         sv2 = ptrace(sv2, [0])
         sv2 /= np.linalg.norm(sv2)
 
@@ -61,7 +66,9 @@ class TestStatevec(unittest.TestCase):
         n = 3
         k = 0
         for plane in ["XY", "YZ", "XZ"]:
-            m_op = meas_op(0, 0, 0, plane, 0, 0)
+            measure_update = MeasureUpdate.compute(Plane[plane], 0, 0, get(0))
+            vec = measure_update.new_plane.polar(0)
+            m_op = meas_op(vec, 0)
             sv = StateVec(list(range(n)))
             sv.single_qubit_evolution(m_op, [k])
             sv.remove_qubit(k)
@@ -96,6 +103,6 @@ class TestStatevec(unittest.TestCase):
         state = minus
         m_op = np.outer(state, state.T.conjugate())
         sv = StateVec(list(range(n)))
-        sv.single_qubit_evolution(m_op, [k])
+        sv.psi = sv.single_qubit_evolution(m_op, [k])
         with self.assertRaises(AssertionError):
             sv.remove_qubit(k)

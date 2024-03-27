@@ -1,5 +1,5 @@
 from .command import N, M, E, X, Z
-from graphix import Pattern
+from graphix.graphix import Pattern
 
 
 def get_cmd_list(pattern_cmd: list[list]):

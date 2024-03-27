@@ -1,4 +1,4 @@
-from graphix import Circuit
+from graphix.graphix import Circuit
 from src.mbqc import MBQC
 import numpy as np
 import unittest
@@ -53,6 +53,15 @@ class TestSimu(unittest.TestCase):
         assert np.allclose(statevec.flatten(), expected) or np.allclose(
             statevec.flatten(), -expected
         )
+
+    def test_y(self):
+        c = Circuit(1)
+        c.y(0)
+        mbqc = get_pattern_from_circ(c)
+        mbqc.run_pattern()
+        expected = -1j * np.array([1, -1]) / np.sqrt(2)
+        statevec = mbqc.state_vec.get_state_vector()
+        assert np.allclose(np.abs(statevec).flatten(), np.abs(expected))
 
 
 if __name__ == "__main__":

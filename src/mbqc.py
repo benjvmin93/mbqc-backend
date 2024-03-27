@@ -22,8 +22,6 @@ class MBQC:
 
     def sort_qubits(self) -> None:
         """sort the qubit order in internal statevector"""
-        print(f"output nodes = {self.pattern.output_nodes}")
-        print(f"node index = {self.state_vec.node_index}")
         for i, ind in enumerate(self.pattern.output_nodes):
             if not self.state_vec.node_index[i] == ind:
                 move_from = self.state_vec.node_index.index(ind)
@@ -57,3 +55,4 @@ class MBQC:
                     logger.exception(e)
                     raise KeyError(e)
         self.finalize()
+        return self.state_vec
