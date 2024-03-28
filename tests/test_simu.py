@@ -5,7 +5,7 @@ import unittest
 
 
 def fidelity(psi: np.ndarray, phi: np.ndarray) -> bool:
-    return np.abs(np.dot(psi.conjugate(), phi)) ** 2
+    return np.abs(np.dot(psi.flatten().conj(), phi.flatten())) ** 2
 
 
 def get_pattern_from_circ(circ):
@@ -21,7 +21,7 @@ class TestSimu(unittest.TestCase):
         mbqc.run_pattern()
         expected = np.array([1, 0])
         statevec = mbqc.state_vec.get_state_vector()
-        assert np.isclose(fidelity(statevec.flatten(), expected.flatten()), 1.0)
+        assert np.isclose(fidelity(statevec, expected), 1.0)
 
     def test_H_2(self):
         c = Circuit(1)
@@ -31,7 +31,7 @@ class TestSimu(unittest.TestCase):
         mbqc.run_pattern()
         expected = np.array([1, 1]) / np.sqrt(2)
         statevec = mbqc.state_vec.get_state_vector()
-        assert np.isclose(fidelity(statevec.flatten(), expected.flatten()), 1.0)
+        assert np.isclose(fidelity(statevec, expected), 1.0)
 
     def test_cnot(self):
         c = Circuit(2)
@@ -40,7 +40,7 @@ class TestSimu(unittest.TestCase):
         mbqc.run_pattern()
         expected = np.array([1, 1, 1, 1]) / 2
         statevec = mbqc.state_vec.get_state_vector()
-        assert np.isclose(fidelity(statevec.flatten(), expected.flatten()), 1.0)
+        assert np.isclose(fidelity(statevec, expected), 1.0)
 
     def test_cnot_2(self):
         c = Circuit(2)
@@ -52,7 +52,7 @@ class TestSimu(unittest.TestCase):
         mbqc.run_pattern()
         expected = np.array([0, 0, 0, 1])
         statevec = mbqc.state_vec.get_state_vector()
-        assert np.isclose(fidelity(statevec.flatten(), expected.flatten()), 1.0)
+        assert np.isclose(fidelity(statevec, expected), 1.0)
 
     def test_y(self):
         c = Circuit(1)
@@ -61,7 +61,7 @@ class TestSimu(unittest.TestCase):
         mbqc.run_pattern()
         expected = np.array([-1j, 1j]) / np.sqrt(2)
         statevec = mbqc.state_vec.get_state_vector()
-        assert np.isclose(fidelity(statevec.flatten(), expected.flatten()), 1.0)
+        assert np.isclose(fidelity(statevec, expected), 1.0)
 
 
 if __name__ == "__main__":

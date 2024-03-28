@@ -134,26 +134,23 @@ class StateVec:
         s_signal = sum([measurements[i] for i in s_domain])
         t_signal = sum([measurements[i] for i in t_domain])
 
+        # Update angle
         measure_update = pauli.MeasureUpdate.compute(
             pauli.Plane[plane], s_signal % 2 == 1, t_signal % 2 == 1, TABLE[vop]
         )
         angle *= np.pi
-        angle = angle * measure_update.coeff + measure_update.add_term
+        angle *= measure_update.coeff
+        angle += measure_update.add_term
         vec = measure_update.new_plane.polar(angle)
 
-        op = meas_op(vec, measurement=0)  # Assume measurement == 0
+        measurement = 0  # Assume measurement == 0
+        op = meas_op(vec, measurement)
         loc = self.node_index.index(index)  # Get right index within state vector
-        proba_Plus = self.expectation_single(op, loc)
-        proba_Minus = 1 - proba_Plus
-        measurement = random.choices([0, 1], weights=[proba_Plus, proba_Minus]).pop()
-        if measurement == 1:
-            op = meas_op(vec, measurement=1)  # Re-compute measurement operator
+        proba_Plus = np.abs(self.expectation_single(op, loc))
 
-        # logger.debug(
-        #     "[M]({index}): projected_state={projstate}, shape={shape}".format(
-        #         index=index, projstate=flat, shape=flat.shape
-        #     )
-        # )
+        if random.random() > proba_Plus:
+            measurement = 1
+            op = meas_op(vec, measurement)
 
         # Project state
         self.psi = self.single_qubit_evolution(op, loc)

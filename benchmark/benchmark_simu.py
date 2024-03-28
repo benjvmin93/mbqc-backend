@@ -106,10 +106,17 @@ def run_pattern(simu: MBQC, time_dict: dict):
             case E(nodes=(i, j)):
                 time = get_exec_time(simu.state_vec.entangle, [i, j])
                 time_dict["E"]["simu"] += time[1]
-            case M(node=i, plane=p, angle=alpha, s_domain=s_domain, t_domain=t_domain):
+            case M(
+                node=i,
+                plane=p,
+                angle=alpha,
+                s_domain=s_domain,
+                t_domain=t_domain,
+                vop=vop,
+            ):
                 time = get_exec_time(
                     simu.state_vec.measure,
-                    [i, p, alpha, s_domain, t_domain, simu.measurements],
+                    [i, p, alpha, s_domain, t_domain, simu.measurements, vop],
                 )
                 simu.measurements[i] = time[0]
                 time_dict["M"]["simu"] += time[1]
@@ -136,26 +143,25 @@ def g_run_pattern(sv_simu: PatternSimulator, time_dict: dict):
     Updates time_dict with execution times according to each commands.
     """
     pattern = sv_simu.pattern
-    backend = sv_simu.backend
-    backend.add_nodes(pattern.input_nodes)
+    sv_simu.backend.add_nodes(pattern.input_nodes)
     for cmd in list(pattern):
         if cmd[0] == "N":
-            time = get_exec_time(backend.add_nodes, [[cmd[1]]])
+            time = get_exec_time(sv_simu.backend.add_nodes, [[cmd[1]]])
             time_dict["N"]["graphix"] += time[1]
         elif cmd[0] == "E":
-            time = get_exec_time(backend.entangle_nodes, [cmd[1]])
+            time = get_exec_time(sv_simu.backend.entangle_nodes, [cmd[1]])
             time_dict["E"]["graphix"] += time[1]
         elif cmd[0] == "M":
-            time = get_exec_time(backend.measure, [cmd])
+            time = get_exec_time(sv_simu.backend.measure, [cmd])
             time_dict["M"]["graphix"] += time[1]
         elif cmd[0] == "X":
-            time = get_exec_time(backend.correct_byproduct, [cmd])
+            time = get_exec_time(sv_simu.backend.correct_byproduct, [cmd])
             time_dict["X"]["graphix"] += time[1]
         elif cmd[0] == "Z":
-            time = get_exec_time(backend.correct_byproduct, [cmd])
+            time = get_exec_time(sv_simu.backend.correct_byproduct, [cmd])
             time_dict["Z"]["graphix"] += time[1]
         elif cmd[0] == "C":
-            backend.apply_clifford(cmd)
+            sv_simu.backend.apply_clifford(cmd)
         else:
             raise ValueError("invalid commands")
     time = get_exec_time(g_finalize, [sv_simu.pattern, sv_simu.backend])
@@ -191,7 +197,7 @@ class BenchmarkSimu:
             g_sv_copy = deepcopy(self.__graphix_simu)
             graphix_time = get_exec_time(g_sv_copy.run)
             time_dict["graphix_simu"] += graphix_time[1]
-            # Ensure the two computed state vector are equivalent
+            # Assert we get the equivalent states from both simulations
             f = fidelity(sv_copy.state_vec.psi, g_sv_copy.backend.state.psi)
             assert np.isclose(f, 1.0)
         time_dict["sv_simu"] /= it
@@ -239,6 +245,7 @@ class BenchmarkSimu:
             # Copy graphix simu
             g_sv_copy = deepcopy(self.__graphix_simu)
             g_run_pattern(g_sv_copy, time_cmd_dict)
+            # Assert we get the equivalent states from both simulations
             f = fidelity(sv_copy.state_vec.psi, g_sv_copy.backend.state.psi)
             assert np.isclose(f, 1.0)
         # Normalize to get the time average.
