@@ -137,16 +137,15 @@ class StateVec:
         measure_update = pauli.MeasureUpdate.compute(
             pauli.Plane[plane], s_signal % 2 == 1, t_signal % 2 == 1, TABLE[vop]
         )
-        print(f"simu: FIRST ANGLE {angle}")
         angle *= np.pi
         angle = angle * measure_update.coeff + measure_update.add_term
-        print(f"SIMU Final computed angle: {angle}")
         vec = measure_update.new_plane.polar(angle)
 
         op = meas_op(vec, measurement=0)  # Assume measurement == 0
-        loc = self.node_index.index(index)
+        loc = self.node_index.index(index)  # Get right index within state vector
         proba_Plus = self.expectation_single(op, loc)
-        measurement = random.choices([0, 1], weights=[proba_Plus, 1 - proba_Plus]).pop()
+        proba_Minus = 1 - proba_Plus
+        measurement = random.choices([0, 1], weights=[proba_Plus, proba_Minus]).pop()
         if measurement == 1:
             op = meas_op(vec, measurement=1)  # Re-compute measurement operator
 
@@ -158,6 +157,7 @@ class StateVec:
 
         # Project state
         self.psi = self.single_qubit_evolution(op, loc)
+
         # Remove measured qubit from state vector
         self.remove_qubit(loc)
         # Remove qubit index from node list
@@ -220,7 +220,8 @@ class StateVec:
         )
         self.normalize()
 
-    def expectation_single(self, op: np.ndarray, index: int) -> complex:
+    def expectation_single(self, op: np.ndarray, index: int) -> np.complex128:
+        self.normalize()
         evolved = self.single_qubit_evolution(op, index)
         return np.dot(self.psi.flatten().conjugate(), evolved.flatten())
 

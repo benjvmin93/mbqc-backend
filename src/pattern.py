@@ -1,8 +1,8 @@
-from .command import N, M, E, X, Z
+from .command import N, M, E, X, Z, Command
 from graphix.graphix import Pattern
 
 
-def get_cmd_list(pattern_cmd: list[list]):
+def get_cmd_list(pattern_cmd: list[list]) -> list[Command]:
     cmd_list = []
     for cmd in pattern_cmd:
         match cmd[0]:
@@ -15,6 +15,7 @@ def get_cmd_list(pattern_cmd: list[list]):
                     angle=cmd[3],
                     s_domain=cmd[4],
                     t_domain=cmd[5],
+                    vop=cmd[6] if len(cmd) == 7 else 0,
                 )
             case "E":
                 cmd = E(nodes=cmd[1])

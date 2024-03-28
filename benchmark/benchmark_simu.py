@@ -162,6 +162,10 @@ def g_run_pattern(sv_simu: PatternSimulator, time_dict: dict):
     time_dict["finalize"]["graphix"] += time[1]
 
 
+def fidelity(psi: np.ndarray, phi: np.ndarray) -> float:
+    return np.abs(np.dot(psi.flatten().conj(), phi.flatten())) ** 2
+
+
 class BenchmarkSimu:
     """
     Benchmark class used to compare graphix state vector simulator and our simulator.
@@ -187,16 +191,9 @@ class BenchmarkSimu:
             g_sv_copy = deepcopy(self.__graphix_simu)
             graphix_time = get_exec_time(g_sv_copy.run)
             time_dict["graphix_simu"] += graphix_time[1]
-            # Ensure we get the same results
-            try:
-                assert np.array_equal(
-                    np.abs(sv_copy.state_vec.psi), np.abs(g_sv_copy.backend.state.psi)
-                )
-            except:
-                print(f"sv: {sv_copy.state_vec.psi.flatten()}")
-                print(f"graphix_sv: {g_sv_copy.backend.state.psi.flatten()}")
-                break
-
+            # Ensure the two computed state vector are equivalent
+            f = fidelity(sv_copy.state_vec.psi, g_sv_copy.backend.state.psi)
+            assert np.isclose(f, 1.0)
         time_dict["sv_simu"] /= it
         time_dict["graphix_simu"] /= it
 
@@ -242,7 +239,8 @@ class BenchmarkSimu:
             # Copy graphix simu
             g_sv_copy = deepcopy(self.__graphix_simu)
             g_run_pattern(g_sv_copy, time_cmd_dict)
-
+            f = fidelity(sv_copy.state_vec.psi, g_sv_copy.backend.state.psi)
+            assert np.isclose(f, 1.0)
         # Normalize to get the time average.
         avg_time_cmd = {
             key: {

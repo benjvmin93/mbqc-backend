@@ -41,10 +41,15 @@ class MBQC:
                 case E(nodes=(i, j)):  # Entangle nodes
                     self.state_vec.entangle(i, j)
                 case M(  # Measure node
-                    node=i, plane=p, angle=alpha, s_domain=s_domain, t_domain=t_domain
+                    node=i,
+                    plane=p,
+                    angle=alpha,
+                    s_domain=s_domain,
+                    t_domain=t_domain,
+                    vop=vop,
                 ):
                     self.measurements[i] = self.state_vec.measure(
-                        i, p, alpha, s_domain, t_domain, self.measurements
+                        i, p, alpha, s_domain, t_domain, self.measurements, vop
                     )
                 case X(node=i, domain=domain):  # Correction X
                     self.state_vec.apply_correction("X", i, domain, self.measurements)
